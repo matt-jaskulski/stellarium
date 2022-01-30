@@ -71,6 +71,7 @@ PointerCoordinates::PointerCoordinates()
 	, flagShowCoordinatesButton(false)
 	, flagShowConstellation(false)
 	, flagShowCrossedLines(false)
+	, flagShowSkybright(true) // Sky luminance mod. TODO: hook up to configuration.
 	, textColor(Vec3f(1,0.5,0))
 	, coordinatesPoint(Vec3d(0,0,0))
 	, fontSize(14)
@@ -284,7 +285,141 @@ void PointerCoordinates::draw(StelCore *core)
 	{
 		constel=QString(" (%1)").arg(core->getIAUConstellation(core->j2000ToEquinoxEqu(mousePosition)));
 	}
-	QString coordsText = QString("%1: %2/%3%4").arg(coordsSystem, cxt, cyt, constel);
+
+	// Start sky luminance mod
+	QString lumiStr;
+	if (flagShowSkybright)
+	{
+		// Copied from LandscapeMgr.cpp
+		float latitude = core->getCurrentLocation().latitude;
+		float altitude = static_cast<float>(core->getCurrentLocation().altitude);
+		float temperature = 15.f;
+		float relativeHumidity = 40.f;
+		float lumi = 0.f;
+		bool atmosphereNoScatter = false;
+		float eclipseFactor = 1.f;
+		//float lightPollutionLuminance = 0.f;
+
+		SolarSystem* ssystem = static_cast<SolarSystem*>(StelApp::getInstance().getModuleMgr().getModule("SolarSystem"));
+		// Compute the moon position in local coordinate
+		Vec3d moonPos = ssystem->getMoon()->getAltAzPosAuto(core);
+		float lunarPhaseAngle=static_cast<float>(ssystem->getMoon()->getPhaseAngle(ssystem->getEarth()->getHeliocentricEclipticPos()));
+		float lunarMagnitude=ssystem->getMoon()->getVMagnitudeWithExtinction(core);
+
+		// Compute the sun position in local coordinate
+		Vec3d _sunPos = ssystem->getSun()->getAltAzPosAuto(core);
+
+		// LP:1673283 no lunar brightening if not on Earth!
+		if (core->getCurrentLocation().planetName != "Earth")
+		{
+			moonPos=_sunPos;
+			lunarPhaseAngle=0.0f;
+		}
+
+		// Copied from Atmosphere.cpp
+		if (qIsNaN(_sunPos.length()))
+			_sunPos.set(0.,0.,-1.*AU);
+		if (qIsNaN(moonPos.length()))
+			moonPos.set(0.,0.,-1.*AU);
+
+		// Update the eclipse intensity factor to apply on atmosphere model
+		// these are for radii
+		const double sun_angular_size = atan(696000./AU/_sunPos.length());
+		const double moon_angular_size = atan(1738./AU/moonPos.length());
+		const double touch_angle = sun_angular_size + moon_angular_size;
+
+		// determine luminance falloff during solar eclipses
+		_sunPos.normalize();
+		moonPos.normalize();
+		// Calculate the atmosphere RGB for each point of the grid. We can use abbreviated numbers here.
+		Vec3f sunPosF=_sunPos.toVec3f();
+		Vec3f moonPosF=moonPos.toVec3f();
+
+		double separation_angle = std::acos(_sunPos.dot(moonPos));  // angle between them
+		// qDebug("touch at %f\tnow at %f (%f)\n", touch_angle, separation_angle, separation_angle/touch_angle);
+		// bright stars should be visible at total eclipse
+		// TODO: correct for atmospheric diffusion
+		// TODO: use better coverage function (non-linear)
+		// because of above issues, this algorithm darkens more quickly than reality
+		// Note: On Earth only, else moon would brighten other planets' atmospheres (LP:1673283)
+		if ((core->getCurrentLocation().planetName=="Earth") && (separation_angle < touch_angle))
+		{
+			double dark_angle = moon_angular_size - sun_angular_size;
+			double min = 0.0025; // 0.005f; // 0.0001f;  // so bright stars show up at total eclipse
+			if (dark_angle < 0.)
+			{
+				// annular eclipse
+				double asun = sun_angular_size*sun_angular_size;
+				min = (asun - moon_angular_size*moon_angular_size)/asun;  // minimum proportion of sun uncovered
+				dark_angle *= -1;
+			}
+
+			if (separation_angle < dark_angle)
+				eclipseFactor = static_cast<float>(min);
+			else
+				eclipseFactor = static_cast<float>(min + (1.0-min)*(separation_angle-dark_angle)/(touch_angle-dark_angle));
+		}
+		else
+			eclipseFactor = 1.f;
+		// TODO: compute eclipse factor also for Lunar eclipses! (lp:#1471546)
+
+		skyb.setLocation(latitude * M_PI_180f, altitude, temperature, relativeHumidity);
+		skyb.setSunMoon(moonPosF[2], sunPosF[2]);
+
+		// Calculate the date from the julian day.
+		int year, month, day;
+		StelUtils::getDateFromJulianDay(core->getJDE(), &year, &month, &day);
+		skyb.setDate(year, month, lunarPhaseAngle, lunarMagnitude);
+
+		// mousePosition is an "unProjected" Vec3d obteined in StelCore.cpp line 2729.
+		// TODO: test this.
+		Vec3f pointF = mousePosition.toVec3f();
+		if(!atmosphereNoScatter)
+		{
+			// Use mirroring for sun only
+			if (pointF[2]<=0.f)
+			{
+				pointF[2] *= -1.f;
+				moonPosF[2] *= -1.f;
+				// The sky below the ground is the symmetric of the one above :
+				// it looks nice and gives proper values for brightness estimation
+				// Use the Skybright.cpp 's models for brightness which gives better results.
+			}
+			// Commenting this out for now for simplicity.
+			// (sky.getFlagSchaefer())
+			//{
+				lumi = skyb.getLuminance(moonPosF[0]*pointF[0]+moonPosF[1]*pointF[1]+moonPosF[2]*pointF[2],
+							 sunPosF[0] *pointF[0]+sunPosF[1] *pointF[1]+sunPosF[2] *pointF[2],
+							 pointF[2]);
+			//}
+			//else // Experimental: Re-allow CIE/Preetham brightness instead.
+			//{
+			//	skylight.pos[0]=pointF.v[0];
+			//	skylight.pos[1]=pointF.v[1];
+			//	skylight.pos[2]=pointF.v[2];
+			//	sky.getxyYValuev(skylight);
+			//	lumi=skylight.color[2];
+			//}
+		}
+
+		lumi *= eclipseFactor;
+		// Add star background luminance
+		lumi += 0.0001f;
+		// Multiply by the input scale of the ToneConverter (is not done automatically by the xyYtoRGB method called later)
+		//lumi*=eye->getInputScale();
+
+		// TODO:
+		// Perhaps better to use the Atmosphere class directly rather than copy and paste.
+		// Add the light pollution luminance AFTER the scaling to avoid scaling it because it is the cause
+		// of the scaling itself
+		//lumi += fader.getInterstate()*lightPollutionLuminance;
+
+		lumiStr = QString::number(lumi);
+
+	}
+	// End sky luminance mod
+
+	QString coordsText = QString("%1: %2/%3%4, Lumi:%5").arg(coordsSystem, cxt, cyt, constel, lumiStr);
 	x = getCoordinatesPlace(coordsText).first;
 	y = getCoordinatesPlace(coordsText).second;
 	if (getCurrentCoordinatesPlace()!=Custom)
@@ -300,6 +435,7 @@ void PointerCoordinates::draw(StelCore *core)
 		sPainter.drawLine2d(m.x()*ppx, 0, m.x()*ppx, params.viewportXywh[3]*ppx);
 		sPainter.drawLine2d(0, (params.viewportXywh[3]-m.y())*ppx, params.viewportXywh[2]*ppx, (params.viewportXywh[3]-m.y())*ppx);
 	}
+
 }
 
 void PointerCoordinates::enableCoordinates(bool b)

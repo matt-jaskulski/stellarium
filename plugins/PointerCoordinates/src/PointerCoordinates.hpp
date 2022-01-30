@@ -22,6 +22,7 @@
 
 #include "StelGui.hpp"
 #include "StelModule.hpp"
+#include "Skybright.hpp"
 
 #include <QFont>
 #include <QString>
@@ -201,6 +202,10 @@ private:
 	QSettings* conf;
 	StelGui* gui;
 
+	// Start sky luminance mod
+	Skybright skyb;
+	// End sky luminance mod
+
 	// The current place for string with coordinates
 	CoordinatesPlace currentPlace;
 	// The current coordinate system
@@ -212,6 +217,11 @@ private:
 	bool flagShowCoordinatesButton;
 	bool flagShowConstellation;
 	bool flagShowCrossedLines;
+
+	// Start sky luminance mod
+	bool flagShowSkybright;
+	// End sky luminance mod
+
 	Vec3f textColor;
 	Vec3d coordinatesPoint;
 	int fontSize;
