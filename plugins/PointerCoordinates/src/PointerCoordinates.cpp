@@ -419,7 +419,7 @@ void PointerCoordinates::draw(StelCore *core)
 	}
 	// End sky luminance mod
 
-	QString coordsText = QString("%1: %2/%3%4, Lumi:%5").arg(coordsSystem, cxt, cyt, constel, lumiStr);
+	QString coordsText = QString("%1: %2/%3%4, %5 lux").arg(coordsSystem, cxt, cyt, constel, lumiStr);
 	x = getCoordinatesPlace(coordsText).first;
 	y = getCoordinatesPlace(coordsText).second;
 	if (getCurrentCoordinatesPlace()!=Custom)
