@@ -87,17 +87,17 @@ class CustomQTranslator : public QTranslator
 {
 	using QTranslator::translate;
 public:
-	virtual bool isEmpty() const { return false; }
+	virtual bool isEmpty() const Q_DECL_OVERRIDE { return false; }
 
 	//! Overrides QTranslator::translate().
 	//! Calls StelTranslator::qtranslate().
 	//! @param context Qt context string - IGNORED.
 	//! @param sourceText the source message.
 	//! @param comment optional parameter
-	virtual QString translate(const char *context, const char *sourceText, const char *disambiguation = Q_NULLPTR, int n = -1) const
+	virtual QString translate(const char *context, const char *sourceText, const char *disambiguation = Q_NULLPTR, int n = -1) const Q_DECL_OVERRIDE
 	{
-		Q_UNUSED(context);
-		Q_UNUSED(n);
+		Q_UNUSED(context)
+		Q_UNUSED(n)
 		return StelTranslator::globalTranslator->qtranslate(sourceText, disambiguation);
 	}
 };
@@ -237,7 +237,7 @@ int main(int argc, char **argv)
 	// OK we start the full program.
 	// Print the console splash and get on with loading the program
 	QString versionLine = QString("This is %1 - %2").arg(StelUtils::getApplicationName(), STELLARIUM_URL);
-	QString copyrightLine = QString("Copyright (C) %1 Fabien Chereau et al.").arg(COPYRIGHT_YEARS);
+	QString copyrightLine = STELLARIUM_COPYRIGHT;
 	int maxLength = qMax(versionLine.size(), copyrightLine.size());
 	qDebug() << qPrintable(QString(" %1").arg(QString().fill('-', maxLength+2)));
 	qDebug() << qPrintable(QString("[ %1 ]").arg(versionLine.leftJustified(maxLength, ' ')));
@@ -318,7 +318,7 @@ int main(int argc, char **argv)
 				delete confSettings;
 
 			QString backupFile(configFileFullPath.left(configFileFullPath.length()-3) + QString("old"));
-			if (QFileInfo(backupFile).exists())
+			if (QFileInfo::exists(backupFile))
 				QFile(backupFile).remove();
 
 			QFile(configFileFullPath).rename(backupFile);

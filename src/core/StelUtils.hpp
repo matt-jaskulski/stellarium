@@ -38,6 +38,12 @@
 #define SPEED_OF_LIGHT 299792.458
 // Ecliptic obliquity of J2000.0, degrees
 #define EPS_0 23.4392803055555555555556
+// Equatorial radius of the Earth in km
+#define EARTH_RADIUS 6378.1366
+// Equatorial radius of the Sun in km
+#define SUN_RADIUS 696000.
+// Equatorial radius of the Moon in km
+#define MOON_RADIUS 1738.
 
 // Add a few frequently used extra math-type literals
 #ifndef M_PI_180
@@ -138,6 +144,7 @@ namespace StelUtils
 	//! @param rad input angle in radian
 	//! @param sign true if positive, false otherwise
 	//! @param deg decimal degree
+	Q_DECL_DEPRECATED_X("just use rad*M_180_PI instead")
 	void radToDecDeg(double rad, bool& sign, double& deg);
 
 	//! Convert an angle in radian to a decimal degree string.
@@ -451,7 +458,7 @@ namespace StelUtils
 	//! Return a day number of week for date
 	//! @return number of day: 0 - sunday, 1 - monday,..
 	int getDayOfWeek(int year, int month, int day);
-	inline int getDayOfWeek(double JD){ double d= fmod(JD+1.5, 7); if (d<0) d+=7.0;
+	inline int getDayOfWeek(double JD){ double d= fmodpos(JD+1.5, 7);
 		return std::lround(floor(d));
 	}
 
@@ -552,6 +559,14 @@ namespace StelUtils
 	//! @param jDay the date and time expressed as a Julian day
 	//! @return Delta-T in seconds
 	double getDeltaTByEspenakMeeus(const double jDay);
+
+	//! Get Delta-T estimation for a given date.
+	//! Note that this method is recommended for the year range:
+	//! -1999 to +3000. It gives details for -500...+2150.
+	//! Implementation of algorithm by Espenak & Meeus (2006) with modified formulae for DeltaT computation
+	//! @param jDay the date and time expressed as a Julian day
+	//! @return Delta-T in seconds
+	double getDeltaTByEspenakMeeusModified(const double jDay);
 
 	//! Get Delta-T estimation for a given date.
 	//! Implementation of algorithm by Schoch (1931) for DeltaT computation,
@@ -874,7 +889,7 @@ namespace StelUtils
 	//! @param minAngle start angle inside the half-circle. maxAngle=minAngle+segments*phi
 	float* ComputeCosSinRhoZone(const float dRho, const unsigned int segments, const float minAngle);
 
-	//! Calculate fixed days (R.D.) from Gregorian date
+	//! Calculate fixed days (R.D.) from Gregorian date (proleptic Gregorian calendar)
 	//! @param year
 	//! @param month
 	//! @param day

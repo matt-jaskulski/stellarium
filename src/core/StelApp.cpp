@@ -63,6 +63,10 @@
 #ifdef ENABLE_SCRIPTING
  #include "StelScriptMgr.hpp"
  #include "StelMainScriptAPIProxy.hpp"
+
+#ifdef USE_STATIC_PLUGIN_CALENDARS
+ #include "../plugins/Calendars/src/Calendars.hpp"
+#endif
 #endif
 
 
@@ -400,6 +404,12 @@ void StelApp::setupNetworkProxy()
 void StelApp::initScriptMgr()
 {
 	scriptMgr->addModules();
+
+#ifdef USE_STATIC_PLUGIN_CALENDARS
+	Calendars *cal=GETSTELMODULE(Calendars);
+	if (cal)
+		cal->makeCalendarsScriptable(scriptMgr);
+#endif
 	QString startupScript;
 	if (qApp->property("onetime_startup_script").isValid())
 		startupScript = qApp->property("onetime_startup_script").toString();

@@ -207,7 +207,7 @@ void StelCore::init()
 
 	// Delta-T stuff
 	// Define default algorithm for time correction (Delta T)
-	QString tmpDT = conf->value("navigation/time_correction_algorithm", "EspenakMeeus").toString();
+	QString tmpDT = conf->value("navigation/time_correction_algorithm", "EspenakMeeusModified").toString();
 	setCurrentDeltaTAlgorithmKey(tmpDT);
 
 	// Define variables of custom equation for calculation of Delta T
@@ -241,6 +241,8 @@ void StelCore::init()
 
 	// Compute transform matrices between coordinates systems
 	updateTransformMatrices();
+	updateFixedEquatorialTransformMatrices();
+	connect(this, SIGNAL(locationChanged(const StelLocation&)), this, SLOT(updateFixedEquatorialTransformMatrices()));
 
 	movementMgr = new StelMovementMgr(this);
 	movementMgr->init();
@@ -419,6 +421,8 @@ StelProjectorP StelCore::getProjection(FrameType frameType, RefractionMode refra
 			return getProjection(getObservercentricEclipticOfDateModelViewTransform(refractionMode));
 		case FrameEquinoxEqu:
 			return getProjection(getEquinoxEquModelViewTransform(refractionMode));
+		case FrameFixedEquatorial:
+			return getProjection(getFixedEquatorialModelViewTransform(refractionMode));
 		case FrameJ2000:
 			return getProjection(getJ2000ModelViewTransform(refractionMode));
 		case FrameGalactic:
@@ -877,6 +881,18 @@ StelProjector::ModelViewTranformP StelCore::getEquinoxEquModelViewTransform(Refr
 	return StelProjector::ModelViewTranformP(refr);
 }
 
+//! Get the modelview matrix for observer-centric fixed equatorial drawing
+StelProjector::ModelViewTranformP StelCore::getFixedEquatorialModelViewTransform(RefractionMode refMode) const
+{
+	if (refMode==RefractionOff || skyDrawer==Q_NULLPTR || (refMode==RefractionAuto && skyDrawer->getFlagHasAtmosphere()==false))
+		return StelProjector::ModelViewTranformP(new StelProjector::Mat4dTransform(matAltAzModelView*matFixedEquatorialToAltAz));
+	Refraction* refr = new Refraction(skyDrawer->getRefraction());
+	// The pretransform matrix will convert from input coordinates to AltAz needed by the refraction function.
+	refr->setPreTransfoMat(matFixedEquatorialToAltAz);
+	refr->setPostTransfoMat(matAltAzModelView);
+	return StelProjector::ModelViewTranformP(refr);
+}
+
 //! Get the modelview matrix for observer-centric altazimuthal drawing
 StelProjector::ModelViewTranformP StelCore::getAltAzModelViewTransform(RefractionMode refMode) const
 {
@@ -989,6 +1005,12 @@ void StelCore::updateTransformMatrices()
 	}
 }
 
+// This avoids calling a costly operation every frame.
+void StelCore::updateFixedEquatorialTransformMatrices()
+{
+	matAltAzToFixedEquatorial = Mat4d::yrotation(M_PI_2-static_cast<double>(getCurrentLocation().latitude)*M_PI_180);
+	matFixedEquatorialToAltAz = matAltAzToFixedEquatorial.transpose();
+}
 // Return the observer heliocentric position
 Vec3d StelCore::getObserverHeliocentricEclipticPos() const
 {
@@ -1166,7 +1188,7 @@ void StelCore::moveObserverToSelected()
 				loc.state = "";
 				loc.longitude=ni->getLongitude();
 				loc.latitude=ni->getLatitude();
-				loc.bortleScaleIndex=1;
+				loc.lightPollutionLuminance = 0;
 
 				moveObserverTo(loc);
 				objmgr->unSelect(); // no use to keep it: Marker will flicker around the screen.
@@ -1304,7 +1326,7 @@ double StelCore::getUTCOffset(const double JD) const
 			shiftInSeconds = qRound((loc.longitude/15.f)*3600.f); // Local Mean Solar Time
 		}
 		if (tzName=="LTST")
-			shiftInSeconds += getSolutionEquationOfTime(JD)*60;
+			shiftInSeconds += qRound(getSolutionEquationOfTime()*60);
 	}
 	#ifdef Q_OS_WIN
 	// A dirty hack for report: https://github.com/Stellarium/stellarium/issues/686
@@ -1388,27 +1410,36 @@ void StelCore::setUseCustomTimeZone(const bool b)
 
 double StelCore::getSolutionEquationOfTime(const double JDE) const
 {
-	double tau = (JDE - 2451545.0)/365250.0;
-	double sunMeanLongitude = 280.4664567 + tau*(360007.6892779 + tau*(0.03032028 + tau*(1./49931. - tau*(1./15300. - tau/2000000.))));
+	// The full solution to the equation of time requires lots of computation. We go the fast way from Meeus, AA2, 28.3.
 
-	// reduce the angle
-	sunMeanLongitude = std::fmod(sunMeanLongitude, 360.);
-	// force it to be the positive remainder, so that 0 <= angle < 360
-	sunMeanLongitude = std::fmod(sunMeanLongitude + 360., 360.);
+	const double T=(JDE-2451545.0)/36525.;
+	const double tau = T*0.1;
+	const double epsRad=getPrecessionAngleVondrakEpsilon(JDE);
+	const double e = (-0.0000001267*T-0.000042037)*T+0.016708634;
+	const double M = ((-0.0001537*T+35999.05029)*T+357.52911)*M_PI_180;
+	double Lo = StelUtils::fmodpos(280.4664567 + tau*(360007.6982779 + tau*(0.03032028 + tau*(1./49931. + tau*(-1./15300. - tau/2000000.)))), 360.);
+	Lo *= M_PI_180;
+	double y=tan(epsRad*0.5); y*=y;
+
+	double E=y*sin(2.*Lo)+2.*e*sin(M)*(2.*y*cos(2.*Lo)-1.)-0.5*y*y*sin(4.*Lo)-1.25*e*e*sin(2.*M);
+	return E*M_180_PI*4.;
+}
+
+double StelCore::getSolutionEquationOfTime() const
+{
+	const double tau = (getJDE() - 2451545.0)/365250.0;
+	const double sunMeanLongitude = StelUtils::fmodpos(280.4664567 + tau*(360007.6982779 + tau*(0.03032028 + tau*(1./49931. + tau*(-1./15300. - tau/2000000.)))), 360.);
 
 	Vec3d pos = GETSTELMODULE(StelObjectMgr)->searchByName("Sun")->getEquinoxEquatorialPos(this);
 	double ra, dec;
 	StelUtils::rectToSphe(&ra, &dec, pos);
 
-	// covert radians to degrees and reduce the angle
-	double alpha = std::fmod(ra*M_180_PI, 360.);
-	// force it to be the positive remainder, so that 0 <= angle < 360
-	alpha = std::fmod(alpha + 360., 360.);
+	// covert radians to degrees and reduce the angle, so that 0 <= angle < 360
+	const double alpha = StelUtils::fmodpos(ra*M_180_PI, 360.);
 
 	double deltaPsi, deltaEps;
-	getNutationAngles(JDE, &deltaPsi, &deltaEps); // these are radians!
-	//double equation = 4*(sunMeanLongitude - 0.0057183 - alpha + get_nutation_longitude(JDE)*cos(get_mean_ecliptical_obliquity(JDE)));
-	double equation = 4*(sunMeanLongitude - 0.0057183 - alpha + deltaPsi*M_180_PI*cos(getPrecessionAngleVondrakEpsilon(JDE)));
+	getNutationAngles(getJDE(), &deltaPsi, &deltaEps); // these are radians!
+	double equation = 4*(sunMeanLongitude - 0.0057183 - alpha + deltaPsi*M_180_PI*cos(getPrecessionAngleVondrakEpsilon(getJDE())));
 	// The equation of time is always smaller 20 minutes in absolute value
 	if (qAbs(equation)>20)
 	{
@@ -2190,6 +2221,13 @@ void StelCore::setCurrentDeltaTAlgorithm(DeltaTAlgorithm algorithm)
 			deltaTstart	= -1999;
 			deltaTfinish	= 3000;
 			break;
+		case EspenakMeeusModified:
+			// Espenak & Meeus (2006) algorithm (with modified formulae) for DeltaT
+			deltaTnDot = -25.858; // n.dot = -25.858 "/cy/cy
+			deltaTfunc = StelUtils::getDeltaTByEspenakMeeusModified;
+			deltaTstart	= -1999;
+			deltaTfinish	= 3000;
+			break;
 		case EspenakMeeusZeroMoonAccel:
 			// This is a trying area. Something is wrong with DeltaT, maybe ndot is still not applied correctly.
 			// Espenak & Meeus (2006) algorithm for DeltaT
@@ -2288,7 +2326,7 @@ QString StelCore::getCurrentDeltaTAlgorithmDescription(void) const
 			description = q_("Correction is disabled. Use only if you know what you are doing!");
 			break;
 		case Schoch: // historical value.
-			description = q_("This historical formula was obtained by C. Schoch in 1931 and was used by G. Henriksson in his article <em>Einstein's Theory of Relativity Confirmed by Ancient Solar Eclipses</em> (%1). See for more info %2here%3.").arg("2009").arg("<a href='http://journalofcosmology.com/AncientAstronomy123.html'>").arg("</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
+			description = q_("This historical formula was obtained by C. Schoch in 1931 and was used by G. Henriksson in his article <em>Einstein's Theory of Relativity Confirmed by Ancient Solar Eclipses</em> (%1). See for more info %2here%3.").arg("2009", "<a href='http://journalofcosmology.com/AncientAstronomy123.html'>", "</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case Clemence: // historical value.
 			description = q_("This empirical equation was published by G. M. Clemence in the article <em>On the system of astronomical constants</em> (%1).").arg("<a href='http://adsabs.harvard.edu/abs/1948AJ.....53..169C'>1948</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
@@ -2345,7 +2383,7 @@ QString StelCore::getCurrentDeltaTAlgorithmDescription(void) const
 			description = q_("From J. Meeus, <em>Astronomical Algorithms</em> (2nd ed., 1998), and widely used. Table for 1620..2000, and includes a variant of Chapront, Chapront-Touze & Francou (1997) for dates outside 1620..2000.").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case JPLHorizons:
-			description = q_("The JPL Solar System Dynamics Group of the NASA Jet Propulsion Laboratory use this formula in their interactive website %1JPL Horizons%2.").arg("<a href='http://ssd.jpl.nasa.gov/?horizons'>").arg("</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
+			description = q_("The JPL Solar System Dynamics Group of the NASA Jet Propulsion Laboratory use this formula in their interactive website %1JPL Horizons%2.").arg("<a href='http://ssd.jpl.nasa.gov/?horizons'>", "</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case MeeusSimons:
 			description = q_("This polynome was published by J. Meeus and L. Simons in article <em>Polynomial approximations to Delta T, 1620-2000 AD</em> (%1).").arg("<a href='http://adsabs.harvard.edu/abs/2000JBAA..110..323M'>2000</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
@@ -2357,16 +2395,19 @@ QString StelCore::getCurrentDeltaTAlgorithmDescription(void) const
 			description = q_("E. M. Reingold & N. Dershowitz present this polynomial data fit in <em>Calendrical Calculations</em> (4th ed. 2018) and in their <em>Calendrical Tabulations</em> (2002). It is based on Jean Meeus' <em>Astronomical Algorithms</em> (1991).").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case MorrisonStephenson2004: // PRIMARY SOURCE
-			description = q_("This important solution was published by L. V. Morrison and F. R. Stephenson in article <em>Historical values of the Earth's clock error %1T and the calculation of eclipses</em> (%2) with addendum in (%3).").arg(QChar(0x0394)).arg("<a href='http://adsabs.harvard.edu/abs/2004JHA....35..327M'>2004</a>").arg("<a href='http://adsabs.harvard.edu/abs/2005JHA....36..339M'>2005</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
+			description = q_("This important solution was published by L. V. Morrison and F. R. Stephenson in article <em>Historical values of the Earth's clock error %1T and the calculation of eclipses</em> (%2) with addendum in (%3).").arg(QChar(0x0394)).arg("<a href='http://adsabs.harvard.edu/abs/2004JHA....35..327M'>2004</a>", "<a href='http://adsabs.harvard.edu/abs/2005JHA....36..339M'>2005</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case Reijs:
-			description = q_("From the Length of Day (LOD; as determined by Stephenson & Morrison (%2)), Victor Reijs derived a %1T formula by using a Simplex optimisation with a cosine and square function. This is based on a possible periodicy described by Stephenson (%2). See for more info %3here%4.").arg(QChar(0x0394)).arg("<a href='http://adsabs.harvard.edu/abs/2004JHA....35..327M'>2004</a>").arg("<a href='http://www.iol.ie/~geniet/eng/DeltaTeval.htm'>").arg("</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
+			description = q_("From the Length of Day (LOD; as determined by Stephenson & Morrison (%2)), Victor Reijs derived a %1T formula by using a Simplex optimisation with a cosine and square function. This is based on a possible periodicy described by Stephenson (%2). See for more info %3here%4.").arg(QChar(0x0394)).arg("<a href='http://adsabs.harvard.edu/abs/2004JHA....35..327M'>2004</a>", "<a href='http://www.iol.ie/~geniet/eng/DeltaTeval.htm'>", "</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case EspenakMeeus: // GENERAL SOLUTION
-			description = q_("This solution by F. Espenak and J. Meeus, based on Morrison & Stephenson (2004) and a polynomial fit through tabulated values for 1600-2000, is used for the %1NASA Eclipse Web Site%2 and in their <em>Five Millennium Canon of Solar Eclipses: -1900 to +3000</em> (2006). This formula is also used in the solar, lunar and planetary ephemeris program SOLEX.").arg("<a href='http://eclipse.gsfc.nasa.gov/eclipse.html'>").arg("</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker)).append(" <em>").append(q_("Used by default.")).append("</em>");
+			description = q_("This solution by F. Espenak and J. Meeus, based on Morrison & Stephenson (2004) and a polynomial fit through tabulated values for 1600-2000, is used for the %1NASA Eclipse Web Site%2 and in their <em>Five Millennium Canon of Solar Eclipses: -1900 to +3000</em> (2006). This formula is also used in the solar, lunar and planetary ephemeris program SOLEX.").arg("<a href='http://eclipse.gsfc.nasa.gov/eclipse.html'>", "</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
+			break;
+		case EspenakMeeusModified: // MODIFIED SOLUTION
+			description = q_("This solution is modified from F. Espenak and J. Meeus, based on Morrison & Stephenson (2004) and a polynomial fit through tabulated values for 1600-2000. Formula for 2005-2050 is modified to match observed values and near-term predictions.").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker)).append(" <em>").append(q_("Used by default.")).append("</em>");
 			break;
 		case EspenakMeeusZeroMoonAccel: // PATCHED SOLUTION. Experimental, it may not make sense to keep it in V1.0.
-			description = QString("%1 %2").arg(q_("PATCHED VERSION WITHOUT ADDITIONAL LUNAR ACCELERATION.")).arg(q_("This solution by F. Espenak and J. Meeus, based on Morrison & Stephenson (2004) and a polynomial fit through tabulated values for 1600-2000, is used for the %1NASA Eclipse Web Site%2 and in their <em>Five Millennium Canon of Solar Eclipses: -1900 to +3000</em> (2006). This formula is also used in the solar, lunar and planetary ephemeris program SOLEX.").arg("<a href='http://eclipse.gsfc.nasa.gov/eclipse.html'>").arg("</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker)).append(" <em>").append("</em>"));
+			description = QString("%1 %2").arg(q_("PATCHED VERSION WITHOUT ADDITIONAL LUNAR ACCELERATION."), q_("This solution by F. Espenak and J. Meeus, based on Morrison & Stephenson (2004) and a polynomial fit through tabulated values for 1600-2000.")).append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
 			break;
 		case Banjevic:
 			description = q_("This solution by B. Banjevic, based on Stephenson & Morrison (1984), was published in article <em>Ancient eclipses and dating the fall of Babylon</em> (%1).").arg("<a href='http://adsabs.harvard.edu/abs/2006POBeo..80..251B'>2006</a>").append(getCurrentDeltaTAlgorithmValidRangeDescription(jd, &marker));
@@ -2431,7 +2472,8 @@ QString StelCore::getCurrentDeltaTAlgorithmValidRangeDescription(const double JD
 		case ReingoldDershowitz:     // and
 		case MorrisonStephenson2004: // and
 		case Reijs:                  // and
-		case EspenakMeeus: // the default, range stated in the Canon, p. 14.  ... and
+		case EspenakMeeus:           // range stated in the Canon, p. 14.  ... and
+		case EspenakMeeusModified:   // the default, range stated in the Canon, p. 14.  ... and
 		case EspenakMeeusZeroMoonAccel: // and
 		case StephensonMorrisonHohenkerk2016: // and
 		case Henriksson2017:
@@ -2724,6 +2766,65 @@ QString StelCore::getIAUConstellation(const Vec3d positionEqJnow) const
 	}
 	qDebug() << "getIAUconstellation error: Cannot determine, algorithm failed.";
 	return "(?)";
+}
+
+// NELM = naked-eye limiting magnitude
+int StelCore::nelmToBortleScaleIndex(const float nelm)
+{
+	// Ref: Bortle, John E. (February 2001). "Gauging Light Pollution: The Bortle Dark-Sky Scale".
+	//  Sky & Telescope. Sky Publishing Corporation.
+	// https://skyandtelescope.org/astronomy-resources/light-pollution-and-astronomy-the-bortle-dark-sky-scale/
+	if(nelm < 4.0) return 9;
+	if(nelm < 4.5) return 8;
+	if(nelm < 5.0) return 7;
+	if(nelm < 5.5) return 6;
+	if(nelm < 6.0) return 5;
+	if(nelm < 6.5) return 4;
+	if(nelm < 7.0) return 3;
+	if(nelm < 7.5) return 2;
+	return 1;
+}
+
+float StelCore::bortleScaleIndexToNELM(const int index)
+{
+	// This is kind of inverse of nelmToBortleScaleIndex(), where the "representative NELM" is chosen to be
+	// the middle of the interval of the NELM values for the inner indices (2-8), and the same distance from
+	// the boundary for outer indices (1 and 9).
+	switch(index)
+	{
+	case 1: return 7.75;
+	case 2: return 7.25;
+	case 3: return 6.75;
+	case 4: return 6.25;
+	case 5: return 5.75;
+	case 6: return 5.25;
+	case 7: return 4.75;
+	case 8: return 4.25;
+	case 9: return 3.75;
+	default:
+			qWarning().nospace() << "Bortle scale index " << index << " out of range";
+			return 0; // Let the problem be visible
+	}
+}
+
+float StelCore::luminanceToNELM(const float luminance)
+{
+	// Ref: Schaefer, B. E.. "Telescopic limiting magnitudes". Astronomical Society of the Pacific,
+	//  Publications (ISSN 0004-6280), vol. 102, Feb. 1990, p. 212-229.
+	// http://adsbit.harvard.edu/cgi-bin/nph-iarticle_query?bibcode=1990PASP..102..212S
+	//
+	// Using formula (18), assuming observer's acuity Fₛ=1 (as suggested in the text as "typical observer"),
+	// absorption term kᵥ=0.3 (as suggested for "typical weather"), coefficient for Bₛ is adjusted to take
+	// the value in cd/m².
+	//
+	return 8.32f - 2.17147240951626f*std::log(1 + 88.5588612190873f*std::sqrt(luminance));
+}
+
+float StelCore::nelmToLuminance(const float nelm)
+{
+	// This is just the inverse of luminanceToNELM()
+	const auto toSquare = std::exp(3.8315015947420905f-0.46051701859880895f*nelm) - 1;
+	return toSquare*toSquare*0.0001275075653676456f;
 }
 
 Vec3d StelCore::getMouseJ2000Pos() const

@@ -19,6 +19,7 @@
 
 #include "Atmosphere.hpp"
 #include "StelUtils.hpp"
+#include "Planet.hpp"
 #include "StelApp.hpp"
 #include "StelProjector.hpp"
 #include "StelToneReproducer.hpp"
@@ -123,8 +124,9 @@ Atmosphere::~Atmosphere(void)
 	atmoShaderProgram = Q_NULLPTR;
 }
 
-void Atmosphere::computeColor(double JD, Vec3d _sunPos, Vec3d moonPos, float moonPhase, float moonMagnitude,
-							   StelCore* core, float latitude, float altitude, float temperature, float relativeHumidity, float extinctionCoefficient, bool noScatter)
+void Atmosphere::computeColor(StelCore* core, const double JD, const Planet& currentPlanet, const Planet& sun, const Planet*const moon,
+							  const StelLocation& location, const float temperature, const float relativeHumidity,
+							  const float extinctionCoefficient, const bool noScatter)
 {
 	const StelProjectorP prj = core->getProjection(StelCore::FrameAltAz, StelCore::RefractionOff);
 	if (viewport != prj->getViewport())
@@ -134,21 +136,21 @@ void Atmosphere::computeColor(double JD, Vec3d _sunPos, Vec3d moonPos, float moo
 		delete[] colorGrid;
 		delete [] posGrid;
 		skyResolutionY = StelApp::getInstance().getSettings()->value("landscape/atmosphereybin", 44).toUInt();
-		skyResolutionX = static_cast<unsigned int>(floorf(0.5f+skyResolutionY*(0.5f*sqrtf(3.0f))*prj->getViewportWidth()/prj->getViewportHeight()));
+		skyResolutionX = static_cast<unsigned int>(floorf(0.5f+static_cast<float>(skyResolutionY)*(0.5f*sqrtf(3.0f))*static_cast<float>(prj->getViewportWidth())/static_cast<float>(prj->getViewportHeight())));
 		posGrid = new Vec2f[static_cast<size_t>((1+skyResolutionX)*(1+skyResolutionY))];
 		colorGrid = new Vec4f[static_cast<size_t>((1+skyResolutionX)*(1+skyResolutionY))];
-		float stepX = static_cast<float>(prj->getViewportWidth()) / static_cast<float>(skyResolutionX-0.5f);
-		float stepY = static_cast<float>(prj->getViewportHeight()) / skyResolutionY;
-		float viewport_left = prj->getViewportPosX();
-		float viewport_bottom = prj->getViewportPosY();
+		float stepX = static_cast<float>(prj->getViewportWidth()) / (static_cast<float>(skyResolutionX)-0.5f);
+		float stepY = static_cast<float>(prj->getViewportHeight()) / static_cast<float>(skyResolutionY);
+		float viewport_left = static_cast<float>(prj->getViewportPosX());
+		float viewport_bottom = static_cast<float>(prj->getViewportPosY());
 		for (unsigned int x=0; x<=skyResolutionX; ++x)
 		{
 			for(unsigned int y=0; y<=skyResolutionY; ++y)
 			{
 				Vec2f &v(posGrid[y*(1+skyResolutionX)+x]);
 				v[0] = viewport_left + ((x == 0) ? 0.f :
-						(x == skyResolutionX) ? prj->getViewportWidth() : (x-0.5f*(y&1))*stepX);
-				v[1] = viewport_bottom+y*stepY;
+						(x == skyResolutionX) ? static_cast<float>(prj->getViewportWidth()) : (static_cast<float>(x)-0.5f*(y&1))*stepX);
+				v[1] = viewport_bottom+static_cast<float>(y)*stepY;
 			}
 		}
 		posGridBuffer.destroy();
@@ -192,50 +194,59 @@ void Atmosphere::computeColor(double JD, Vec3d _sunPos, Vec3d moonPos, float moo
 		colorGridBuffer.release();
 	}
 
-	if (qIsNaN(_sunPos.length()))
-		_sunPos.set(0.,0.,-1.*AU);
-	if (qIsNaN(moonPos.length()))
-		moonPos.set(0.,0.,-1.*AU);
+	auto sunPos  =  sun.getAltAzPosAuto(core);
+	if (qIsNaN(sunPos.length()))
+		sunPos.set(0.,0.,-1.*AU);
 
-	// Update the eclipse intensity factor to apply on atmosphere model
-	// these are for radii
-	const double sun_angular_size = atan(696000./AU/_sunPos.length());
-	const double moon_angular_size = atan(1738./AU/moonPos.length());
-	const double touch_angle = sun_angular_size + moon_angular_size;
-
-	// determine luminance falloff during solar eclipses
-	_sunPos.normalize();
-	moonPos.normalize();
+	Vec3d moonPos = sunPos;
 	// Calculate the atmosphere RGB for each point of the grid. We can use abbreviated numbers here.
-	Vec3f sunPosF=_sunPos.toVec3f();
-	Vec3f moonPosF=moonPos.toVec3f();
 
-	double separation_angle = std::acos(_sunPos.dot(moonPos));  // angle between them
 	// qDebug("touch at %f\tnow at %f (%f)\n", touch_angle, separation_angle, separation_angle/touch_angle);
 	// bright stars should be visible at total eclipse
 	// TODO: correct for atmospheric diffusion
 	// TODO: use better coverage function (non-linear)
 	// because of above issues, this algorithm darkens more quickly than reality
-	// Note: On Earth only, else moon would brighten other planets' atmospheres (LP:1673283)
-	if ((core->getCurrentLocation().planetName=="Earth") && (separation_angle < touch_angle))
+	if (moon)
 	{
-		double dark_angle = moon_angular_size - sun_angular_size;
-		double min = 0.0025; // 0.005f; // 0.0001f;  // so bright stars show up at total eclipse
-		if (dark_angle < 0.)
-		{
-			// annular eclipse
-			double asun = sun_angular_size*sun_angular_size;
-			min = (asun - moon_angular_size*moon_angular_size)/asun;  // minimum proportion of sun uncovered
-			dark_angle *= -1;
-		}
+		moonPos = moon->getAltAzPosAuto(core);
+		if (qIsNaN(moonPos.length()))
+			moonPos.set(0.,0.,-1.*AU);
 
-		if (separation_angle < dark_angle)
-			eclipseFactor = static_cast<float>(min);
-		else
-			eclipseFactor = static_cast<float>(min + (1.0-min)*(separation_angle-dark_angle)/(touch_angle-dark_angle));
+		// Update the eclipse intensity factor to apply on atmosphere model
+		// these are for radii
+		const double sun_angular_size = atan(sun.getEquatorialRadius()/sunPos.length());
+		const double moon_angular_size = atan(moon->getEquatorialRadius()/moonPos.length());
+		const double touch_angle = sun_angular_size + moon_angular_size;
+
+		// determine luminance falloff during solar eclipses
+		sunPos.normalize();
+		moonPos.normalize();
+		double separation_angle = std::acos(sunPos.dot(moonPos));  // angle between them
+
+		if(separation_angle < touch_angle)
+		{
+
+			double dark_angle = moon_angular_size - sun_angular_size;
+			double min = 0.0025; // 0.005f; // 0.0001f;  // so bright stars show up at total eclipse
+			if (dark_angle < 0.)
+			{
+				// annular eclipse
+				double asun = sun_angular_size*sun_angular_size;
+				min = (asun - moon_angular_size*moon_angular_size)/asun;  // minimum proportion of sun uncovered
+				dark_angle *= -1;
+			}
+
+			if (separation_angle < dark_angle)
+				eclipseFactor = static_cast<float>(min);
+			else
+				eclipseFactor = static_cast<float>(min + (1.0-min)*(separation_angle-dark_angle)/(touch_angle-dark_angle));
+		}
 	}
 	else
+	{
 		eclipseFactor = 1.f;
+		sunPos.normalize();
+	}
 	// TODO: compute eclipse factor also for Lunar eclipses! (lp:#1471546)
 
 	// No need to calculate if not visible
@@ -262,15 +273,19 @@ void Atmosphere::computeColor(double JD, Vec3d _sunPos, Vec3d moonPos, float moo
 	// Also, Preetham has optimized to T in[2..6], which translates now to k in [0.2-0.36].
 	// In Schaefer-Krisciunas Moon brightness paper, k=0.172 for Mauna Kea. Preetham will likely be too bright here.
 	//sky.setParamsv(sunPos, qBound(2.f, turbidity, 6.f));
+	Vec3f sunPosF=sunPos.toVec3f();
+	Vec3f moonPosF=moonPos.toVec3f();
 	sky.setParamsv(sunPosF, qBound(2.f, turbidity, 16.f));  // GZ-AT allow more turbidity for testing
 
-	skyb.setLocation(latitude * M_PI_180f, altitude, temperature, relativeHumidity);
+	skyb.setLocation(location.latitude * M_PI_180f, static_cast<float>(location.altitude), temperature, relativeHumidity);
 	skyb.setSunMoon(moonPosF[2], sunPosF[2]);
 
 	// Calculate the date from the julian day.
 	int year, month, day;
 	StelUtils::getDateFromJulianDay(JD, &year, &month, &day);
-	skyb.setDate(year, month, moonPhase, moonMagnitude);
+	const auto moonPhase = moon ? moon->getPhaseAngle(currentPlanet.getHeliocentricEclipticPos()) : 0.;
+	const auto moonMagnitude = moon ? moon->getVMagnitudeWithExtinction(core) : 100.f;
+	skyb.setDate(year, month, static_cast<float>(moonPhase), moonMagnitude);
 
 	// Variables used to compute the average sky luminance
 	float sum_lum = 0.f;
@@ -340,7 +355,7 @@ void Atmosphere::computeColor(double JD, Vec3d _sunPos, Vec3d moonPos, float moo
 	
 	// Update average luminance
 	if (!overrideAverageLuminance)
-		averageLuminance = sum_lum/((1+skyResolutionX)*(1+skyResolutionY));
+		averageLuminance = sum_lum/static_cast<float>((1+skyResolutionX)*(1+skyResolutionY));
 }
 
 // override computable luminance. This is for special operations only, e.g. for scripting of brightness-balanced image export.

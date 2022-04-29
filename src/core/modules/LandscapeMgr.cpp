@@ -35,6 +35,7 @@
 #include "StelSkyDrawer.hpp"
 #include "StelPainter.hpp"
 #include "StelPropertyMgr.hpp"
+#include "StelUtils.hpp"
 #include "qzipreader.h"
 
 #include <QDebug>
@@ -65,23 +66,6 @@ Cardinals::Cardinals()
 	// Draw the principal wind points even smaller.
 	font16WCR.setPixelSize(conf->value("viewing/16wcr_font_size", screenFontSize+2).toInt());
 
-	// Directions
-	rose4winds = {
-		{ dN, Vec3f(-1.f, 0.f, 0.f) }, { dS, Vec3f(1.f,  0.f, 0.f) },
-		{ dE, Vec3f( 0.f, 1.f, 0.f) }, { dW, Vec3f(0.f, -1.f, 0.f) }
-	};
-	rose8winds = {
-		{ dNE, Vec3f(-1.f,  1.f, 0.f) }, { dSE, Vec3f( 1.f,  1.f, 0.f) },
-		{ dSW, Vec3f( 1.f, -1.f, 0.f) }, { dNW, Vec3f(-1.f, -1.f, 0.f) }
-	};
-	const float cp = 1.f/(1.f+sqrt(2.f));
-	const float cn = -1.f*cp;
-	rose16winds = {
-		{ dNNE, Vec3f(-1.f,   cp, 0.f) }, { dENE, Vec3f(  cn,  1.f, 0.f) },
-		{ dESE, Vec3f(  cp,  1.f, 0.f) }, { dSSE, Vec3f( 1.f,   cp, 0.f) },
-		{ dSSW, Vec3f( 1.f,   cn, 0.f) }, { dWSW, Vec3f(  cp, -1.f, 0.f) },
-		{ dWNW, Vec3f(  cn, -1.f, 0.f) }, { dNNW, Vec3f(-1.f,   cn, 0.f) }
-	};
 	// English names for cardinals
 	labels = {
 		{   dN,  "N" }, {   dS,  "S" }, {   dE,  "E" }, {   dW,  "W" },
@@ -94,6 +78,21 @@ Cardinals::Cardinals()
 Cardinals::~Cardinals()
 {
 }
+
+const QMap<Cardinals::CompassDirection, Vec3f> Cardinals::rose4winds = {
+	{ Cardinals::dN, Vec3f(-1.f, 0.f, 0.f) }, { Cardinals::dS, Vec3f(1.f,  0.f, 0.f) },
+	{ Cardinals::dE, Vec3f( 0.f, 1.f, 0.f) }, { Cardinals::dW, Vec3f(0.f, -1.f, 0.f) }
+};
+const QMap<Cardinals::CompassDirection, Vec3f> Cardinals::rose8winds = {
+	{ Cardinals::dNE, Vec3f(-1.f,  1.f, 0.f) }, { Cardinals::dSE, Vec3f( 1.f,  1.f, 0.f) },
+	{ Cardinals::dSW, Vec3f( 1.f, -1.f, 0.f) }, { Cardinals::dNW, Vec3f(-1.f, -1.f, 0.f) }
+};
+const QMap<Cardinals::CompassDirection, Vec3f> Cardinals::rose16winds = {
+	{ dNNE, Vec3f(-1.f,   cp, 0.f) }, { dENE, Vec3f( -cp,  1.f, 0.f) },
+	{ dESE, Vec3f(  cp,  1.f, 0.f) }, { dSSE, Vec3f( 1.f,   cp, 0.f) },
+	{ dSSW, Vec3f( 1.f,  -cp, 0.f) }, { dWSW, Vec3f(  cp, -1.f, 0.f) },
+	{ dWNW, Vec3f( -cp, -1.f, 0.f) }, { dNNW, Vec3f(-1.f,  -cp, 0.f) }
+};
 
 void Cardinals::update(double deltaTime)
 {
@@ -123,26 +122,33 @@ void Cardinals::draw(const StelCore* core, double latitude) const
 		const float ppx = static_cast<float>(core->getCurrentStelProjectorParams().devicePixelsPerPixel);
 		StelPainter sPainter(prj);
 		sPainter.setFont(font4WCR);
-		float sshift=0.f, bshift=0.f, cshift=0.f, vshift=0.f;
+		float sshift=0.f, bshift=0.f, cshift=0.f, vshift=1.f;
 		bool flagMask = (core->getProjection(StelCore::FrameJ2000)->getMaskType() != StelProjector::MaskDisk);
 		if (propMgr->getProperty("SpecialMarkersMgr.compassMarksDisplayed")->getValue().toBool())
 			vshift = static_cast<float>(screenFontSize + 12)*ppx;
 
 		Vec3f xy;
-		QString directionLabel;
 		sPainter.setColor(color, fader4WCR.getInterstate());
 		sPainter.setBlending(true);
 		QMapIterator<Cardinals::CompassDirection, Vec3f> it4w(rose4winds);
 		while(it4w.hasNext())
 		{
 			it4w.next();
-			directionLabel = labels.value(it4w.key(), "");
+			QString directionLabel = labels.value(it4w.key(), "");
 
 			if (flagMask)
 				sshift = ppx*static_cast<float>(sPainter.getFontMetrics().boundingRect(directionLabel).width())*0.5f;
 
 			if (prj->project(it4w.value(), xy))
-				sPainter.drawText(xy[0], xy[1], directionLabel, 0., -sshift, vshift, false);
+			{
+				Vec3f up(it4w.value()[0], it4w.value()[1], 1.f*M_PI_180f);
+				Vec3f upPrj;
+				prj->project(up, upPrj);
+				float dx=upPrj[0]-xy[0];
+				float dy=upPrj[1]-xy[1];
+				float textAngle=atan2(dx, dy);
+				sPainter.drawText(xy[0], xy[1], directionLabel, -textAngle*M_180_PIf, -sshift, vshift, true);
+			}
 		}
 
 		if (fader8WCR.getInterstate()>0.f)
@@ -155,15 +161,22 @@ void Cardinals::draw(const StelCore* core, double latitude) const
 			while(it8w.hasNext())
 			{
 				it8w.next();
-				directionLabel = labels.value(it8w.key(), "");
+				QString directionLabel = labels.value(it8w.key(), "");
 
 				if (flagMask)
 					bshift = ppx*static_cast<float>(sPainter.getFontMetrics().boundingRect(directionLabel).width())*0.5f;
 
 				if (prj->project(it8w.value(), xy))
-					sPainter.drawText(xy[0], xy[1], directionLabel, 0., -bshift, vshift, false);
+				{
+					Vec3f up(it8w.value()[0], it8w.value()[1], 1.f*M_PI_180f);
+					Vec3f upPrj;
+					prj->project(up, upPrj);
+					float dx=upPrj[0]-xy[0];
+					float dy=upPrj[1]-xy[1];
+					float textAngle=atan2(dx, dy);
+					sPainter.drawText(xy[0], xy[1], directionLabel, -textAngle*M_180_PIf, -bshift, vshift, true);
+				}
 			}
-
 
 			if (fader16WCR.getInterstate()>0.f)
 			{
@@ -174,13 +187,21 @@ void Cardinals::draw(const StelCore* core, double latitude) const
 				while(it16w.hasNext())
 				{
 					it16w.next();
-					directionLabel = labels.value(it16w.key(), "");
+					QString directionLabel = labels.value(it16w.key(), "");
 
 					if (flagMask)
 						cshift = ppx*static_cast<float>(sPainter.getFontMetrics().boundingRect(directionLabel).width())*0.5f;
 
 					if (prj->project(it16w.value(), xy))
-						sPainter.drawText(xy[0], xy[1], directionLabel, 0., -cshift, vshift, false);
+					{
+						Vec3f up(it16w.value()[0], it16w.value()[1], 1.f*M_PI_180f);
+						Vec3f upPrj;
+						prj->project(up, upPrj);
+						float dx=upPrj[0]-xy[0];
+						float dy=upPrj[1]-xy[1];
+						float textAngle=atan2(dx, dy);
+						sPainter.drawText(xy[0], xy[1], directionLabel, -textAngle*M_180_PIf, -cshift, vshift, true);
+					}
 				}
 			}
 		}
@@ -229,7 +250,7 @@ void Cardinals::updateI18n()
 LandscapeMgr::LandscapeMgr()
 	: StelModule()
 	, atmosphere(Q_NULLPTR)
-	, cardinalsPoints(Q_NULLPTR)
+	, cardinalPoints(Q_NULLPTR)
 	, landscape(Q_NULLPTR)
 	, oldLandscape(Q_NULLPTR)
 	, flagLandscapeSetsLocation(false)
@@ -260,7 +281,7 @@ LandscapeMgr::LandscapeMgr()
 LandscapeMgr::~LandscapeMgr()
 {
 	delete atmosphere;
-	delete cardinalsPoints;
+	delete cardinalPoints;
 	if (oldLandscape)
 	{
 		delete oldLandscape;
@@ -310,7 +331,7 @@ void LandscapeMgr::update(double deltaTime)
 		}
 	}
 	landscape->update(deltaTime);
-	cardinalsPoints->update(deltaTime);
+	cardinalPoints->update(deltaTime);
 
 	// Compute the atmosphere color and intensity
 	// Compute the sun position in local coordinate
@@ -318,27 +339,22 @@ void LandscapeMgr::update(double deltaTime)
 
 	StelCore* core = StelApp::getInstance().getCore();
 	StelSkyDrawer* drawer=core->getSkyDrawer();
-	Vec3d sunPos = ssystem->getSun()->getAltAzPosAuto(core);
 
 	// Compute the moon position in local coordinate
-	Vec3d moonPos = ssystem->getMoon()->getAltAzPosAuto(core);
-	float lunarPhaseAngle=static_cast<float>(ssystem->getMoon()->getPhaseAngle(ssystem->getEarth()->getHeliocentricEclipticPos()));
-	float lunarMagnitude=ssystem->getMoon()->getVMagnitudeWithExtinction(core);
-	// LP:1673283 no lunar brightening if not on Earth!
-	if (core->getCurrentLocation().planetName != "Earth")
-	{
-		moonPos=sunPos;
-		lunarPhaseAngle=0.0f;
-	}
+	const auto sun   = ssystem->getSun();
+	const auto moon  = ssystem->getMoon();
+	const auto earth = ssystem->getEarth();
+	const auto currentPlanet = core->getCurrentPlanet();
+	const bool currentIsEarth = currentPlanet->getID() == earth->getID();
 	// First parameter in next call is used for particularly earth-bound computations in Schaefer's sky brightness model. Difference DeltaT makes no difference here.
-	atmosphere->computeColor(core->getJDE(), sunPos, moonPos, lunarPhaseAngle, lunarMagnitude,
-				 core, core->getCurrentLocation().latitude, static_cast<float>(core->getCurrentLocation().altitude),
-				 15.f, 40.f, static_cast<float>(drawer->getExtinctionCoefficient()), atmosphereNoScatter);	// Temperature = 15c, relative humidity = 40%
+	// Temperature = 15°C, relative humidity = 40%
+	atmosphere->computeColor(core, core->getJDE(), *currentPlanet, *sun, currentIsEarth ? moon.data() : nullptr, core->getCurrentLocation(),
+							 15.f, 40.f, static_cast<float>(drawer->getExtinctionCoefficient()), atmosphereNoScatter);
 
 	core->getSkyDrawer()->reportLuminanceInFov(3.75f+atmosphere->getAverageLuminance()*3.5f, true);
 
 	// NOTE: Simple workaround for brightness of landscape when observing from the Sun.
-	if (core->getCurrentLocation().planetName == "Sun")
+	if (currentPlanet->getID() == sun->getID())
 	{
 		landscape->setBrightness(1.0, 1.0);
 		return;
@@ -372,8 +388,6 @@ void LandscapeMgr::update(double deltaTime)
 //	qDebug() << "Adapted Atmosphere lum=" << eye->adaptLuminance(atmosphere->getAverageLuminance()) << " Adapted ground lum=" << eye->adaptLuminance(groundLuminance);
 
 	// compute global ground brightness in a simplistic way, directly in RGB
-	sunPos.normalize();
-	moonPos.normalize();
 
 	double landscapeBrightness=0.0;
 	if (getFlagLandscapeUseMinimalBrightness())
@@ -384,6 +398,11 @@ void LandscapeMgr::update(double deltaTime)
 		else
 			landscapeBrightness = getDefaultMinimalBrightness();
 	}
+
+	Vec3d sunPos = sun->getAltAzPosAuto(core);
+	sunPos.normalize();
+	Vec3d moonPos = moon->getAltAzPosAuto(core);
+	moonPos.normalize();
 
 	// With atmosphere on, we define the solar brightness contribution zero when the sun is 8 degrees below the horizon.
 	// The multiplier of 1.5 just looks better, it somehow represents illumination by scattered sunlight.
@@ -404,10 +423,11 @@ void LandscapeMgr::update(double deltaTime)
 	}
 
 	// GZ: 2013-09-25 Take light pollution into account!
-	float pollutionAddonBrightness=static_cast<float>(drawer->getBortleScaleIndex()-1)*0.025f; // 0..8, so we assume empirical linear brightening 0..0.02
+    const float nelm = StelCore::luminanceToNELM(drawer->getLightPollutionLuminance());
+	float pollutionAddonBrightness=(15.5f-2*nelm)*0.025f; // 0..8, so we assume empirical linear brightening 0..0.02
 	float lunarAddonBrightness=0.f;
-	if (moonPos[2] > -0.1/1.5)
-		lunarAddonBrightness = qMax(0.2f/-12.f*ssystem->getMoon()->getVMagnitudeWithExtinction(core),0.f)*static_cast<float>(moonPos[2]);
+	if (currentIsEarth && moonPos[2] > -0.1/1.5)
+		lunarAddonBrightness = qMax(0.2f/-12.f*moon->getVMagnitudeWithExtinction(core),0.f)*static_cast<float>(moonPos[2]);
 
 	landscapeBrightness += static_cast<double>(qMax(lunarAddonBrightness, pollutionAddonBrightness));
 
@@ -476,7 +496,7 @@ void LandscapeMgr::draw(StelCore* core)
 	landscape->draw(core, flagPolyLineDisplayedOnly);
 
 	// Draw the cardinal points
-	cardinalsPoints->draw(core, static_cast<double>(StelApp::getInstance().getCore()->getCurrentLocation().latitude));
+	cardinalPoints->draw(core, static_cast<double>(StelApp::getInstance().getCore()->getCurrentLocation().latitude));
 
 	// Workaround for a bug with spherical mirror mode when we don't show the cardinal points.
 	// I am not really sure why this seems to fix the problem.  If you want to
@@ -498,7 +518,7 @@ void LandscapeMgr::drawPolylineOnly(StelCore* core)
 		landscape->draw(core, true);
 
 	// Draw the cardinal points
-	cardinalsPoints->draw(core, static_cast<double>(StelApp::getInstance().getCore()->getCurrentLocation().latitude));
+	cardinalPoints->draw(core, static_cast<double>(StelApp::getInstance().getCore()->getCurrentLocation().latitude));
 }
 
 
@@ -545,10 +565,10 @@ void LandscapeMgr::init()
 	setFlagPolyLineDisplayed(conf->value("landscape/flag_polyline_only", false).toBool());
 	setPolyLineThickness(conf->value("landscape/polyline_thickness", 1).toInt());
 
-	cardinalsPoints = new Cardinals();
-	cardinalsPoints->setFlagShow4WCRLabels(conf->value("viewing/flag_cardinal_points", true).toBool());
-	cardinalsPoints->setFlagShow8WCRLabels(conf->value("viewing/flag_ordinal_points", true).toBool());
-	cardinalsPoints->setFlagShow16WCRLabels(conf->value("viewing/flag_16wcr_points", false).toBool());
+	cardinalPoints = new Cardinals();
+	cardinalPoints->setFlagShow4WCRLabels(conf->value("viewing/flag_cardinal_points", true).toBool());
+	cardinalPoints->setFlagShow8WCRLabels(conf->value("viewing/flag_ordinal_points", true).toBool());
+	cardinalPoints->setFlagShow16WCRLabels(conf->value("viewing/flag_16wcr_points", false).toBool());
 	// Load colors from config file
 	QString defaultColor = conf->value("color/default_color").toString();
 	setColorCardinalPoints(Vec3f(conf->value("color/cardinal_color", defaultColor).toString()));
@@ -557,18 +577,18 @@ void LandscapeMgr::init()
 	//Bortle scale is managed by SkyDrawer
 	StelSkyDrawer* drawer = app->getCore()->getSkyDrawer();
 	Q_ASSERT(drawer);
-	setAtmosphereBortleLightPollution(drawer->getBortleScaleIndex());
+	setAtmosphereLightPollutionLuminance(drawer->getLightPollutionLuminance());
 	connect(app->getCore(), SIGNAL(locationChanged(StelLocation)), this, SLOT(onLocationChanged(StelLocation)));
 	connect(app->getCore(), SIGNAL(targetLocationChanged(StelLocation)), this, SLOT(onTargetLocationChanged(StelLocation)));
-	connect(drawer, SIGNAL(bortleScaleIndexChanged(int)), this, SLOT(setAtmosphereBortleLightPollution(int)));
+	connect(drawer, &StelSkyDrawer::lightPollutionLuminanceChanged, this, &LandscapeMgr::setAtmosphereLightPollutionLuminance);
 	connect(app, SIGNAL(languageChanged()), this, SLOT(updateI18n()));
 
 	QString displayGroup = N_("Display Options");
 	addAction("actionShow_Atmosphere", displayGroup, N_("Atmosphere"), "atmosphereDisplayed", "A");
 	addAction("actionShow_Fog", displayGroup, N_("Fog"), "fogDisplayed", "F");
-	addAction("actionShow_Cardinal_Points", displayGroup, N_("Cardinal points"), "cardinalsPointsDisplayed", "Q");
-	addAction("actionShow_Intercardinal_Points", displayGroup, N_("Ordinal (Intercardinal) points"), "ordinalsPointsDisplayed");
-	addAction("actionShow_Secondary_Intercardinal_Points", displayGroup, N_("Secondary Intercardinal points"), "ordinals16WRPointsDisplayed");
+	addAction("actionShow_Cardinal_Points", displayGroup, N_("Cardinal points"), "cardinalPointsDisplayed", "Q");
+	addAction("actionShow_Intercardinal_Points", displayGroup, N_("Ordinal (Intercardinal) points"), "ordinalPointsDisplayed");
+	addAction("actionShow_Secondary_Intercardinal_Points", displayGroup, N_("Secondary Intercardinal points"), "ordinal16WRPointsDisplayed");
 	addAction("actionShow_Ground", displayGroup, N_("Ground"), "landscapeDisplayed", "G");
 	addAction("actionShow_LandscapeIllumination", displayGroup, N_("Landscape illumination"), "illuminationDisplayed", "Shift+G");
 	addAction("actionShow_LandscapeLabels", displayGroup, N_("Landscape labels"), "labelsDisplayed", "Ctrl+Shift+G");
@@ -660,9 +680,9 @@ bool LandscapeMgr::setCurrentLandscapeID(const QString& id, const double changeL
 			setFlagFog(static_cast<bool>(landscape->getDefaultFogSetting()));
 			landscape->setFlagShowFog(static_cast<bool>(landscape->getDefaultFogSetting()));
 		}
-		if (landscape->getDefaultBortleIndex() > 0)
+		if (landscape->getDefaultLightPollutionLuminance().isValid())
 		{
-			drawer->setBortleScaleIndex(landscape->getDefaultBortleIndex());
+			drawer->setLightPollutionLuminance(landscape->getDefaultLightPollutionLuminance().toFloat());
 		}
 		if (landscape->getDefaultAtmosphericExtinction() >= 0.0)
 		{
@@ -764,7 +784,7 @@ bool LandscapeMgr::setDefaultLandscapeID(const QString& id)
 void LandscapeMgr::updateI18n()
 {
 	// Translate all labels with the new language
-	if (cardinalsPoints) cardinalsPoints->updateI18n();
+	if (cardinalPoints) cardinalPoints->updateI18n();
 	landscape->loadLabels(getCurrentLandscapeID());
 }
 
@@ -823,13 +843,15 @@ void LandscapeMgr::onLocationChanged(const StelLocation &loc)
 	{
 		//this was previously logic in ViewDialog, but should really be on a non-GUI layer
 		StelCore* core = StelApp::getInstance().getCore();
-		int bIdx = loc.bortleScaleIndex;
+		float lum;
 		if (!loc.planetName.contains("Earth")) // location not on Earth...
-			bIdx = 1;
-		if (bIdx<1) // ...or it observatory, or it unknown location
-			bIdx = loc.DEFAULT_BORTLE_SCALE_INDEX;
+			lum = 0;
+		else if(loc.lightPollutionLuminance.isValid())
+			lum = loc.lightPollutionLuminance.toFloat();
+		else // ...or it is an observatory, or it is an unknown location
+			lum = loc.DEFAULT_LIGHT_POLLUTION_LUMINANCE;
 
-		core->getSkyDrawer()->setBortleScaleIndex(bIdx);
+		core->getSkyDrawer()->setLightPollutionLuminance(lum);
 	}
 }
 
@@ -857,7 +879,7 @@ void LandscapeMgr::onTargetLocationChanged(const StelLocation &loc)
 				setFlagAtmosphere(false);
 				setFlagFog(false);
 				setFlagLandscape(false);
-				setFlagCardinalsPoints(false);
+				setFlagCardinalPoints(false);
 				//setFlagOrdinalsPoints(false);
 				//setFlagOrdinals16WRPoints(false);
 			}
@@ -872,9 +894,9 @@ void LandscapeMgr::onTargetLocationChanged(const StelLocation &loc)
 				setFlagAtmosphere(pl->hasAtmosphere() && conf->value("landscape/flag_atmosphere", true).toBool());
 				setFlagFog(pl->hasAtmosphere() && conf->value("landscape/flag_fog", true).toBool());
 				setFlagLandscape(true);
-				setFlagCardinalsPoints(conf->value("viewing/flag_cardinal_points", true).toBool());
-				setFlagOrdinalsPoints(conf->value("viewing/flag_ordinal_points", true).toBool());
-				setFlagOrdinals16WRPoints(conf->value("viewing/flag_16wcr_points", false).toBool());
+				setFlagCardinalPoints(conf->value("viewing/flag_cardinal_points", true).toBool());
+				setFlagOrdinalPoints(conf->value("viewing/flag_ordinal_points", true).toBool());
+				setFlagOrdinal16WRPoints(conf->value("viewing/flag_16wcr_points", false).toBool());
 			}
 		}
 	}
@@ -963,12 +985,12 @@ QStringList LandscapeMgr::getAllLandscapeIDs() const
 QStringList LandscapeMgr::getUserLandscapeIDs() const
 {
 	QStringList result;
-	for (auto &id : getNameToDirMap().values())
+	QMapIterator<QString, QString> it(getNameToDirMap());
+	while (it.hasNext())
 	{
-		if(!packagedLandscapeIDs.contains(id))
-		{
-			result.append(id);
-		}
+		it.next();
+		if(!packagedLandscapeIDs.contains(it.value()))
+			result.append(it.value());
 	}
 	return result;
 }
@@ -1032,59 +1054,81 @@ QString LandscapeMgr::getCurrentLandscapeHtmlDescription() const
 		if (atmosphere.size()>0)
 			desc += QString("<b>%1</b>: %2<br />").arg(q_("Atmospheric conditions"), atmosphere.join(", "));
 
-		int bortle = landscape->getDefaultBortleIndex();
-		if (bortle>-1)
-			desc += QString("<b>%1</b>: %2 (%3)").arg(q_("Light pollution")).arg(bortle).arg(q_("by Bortle scale"));
+		const auto lightPollutionLum = landscape->getDefaultLightPollutionLuminance();
+		if (lightPollutionLum.isValid())
+		{
+			const auto lum = lightPollutionLum.toFloat();
+			auto scaledLum = lum;
+			QString unit = q_("cd/m<sup>2</sup>");
+			if(lum < 1e-6f)
+			{
+				scaledLum = lum*1e9f;
+				unit = q_("ncd/m<sup>2</sup>");
+			}
+			else if(lum < 1e-3f)
+			{
+				scaledLum = lum*1e6f;
+				unit = q_("&mu;cd/m<sup>2</sup>");
+			}
+			else if(lum < 1)
+			{
+				scaledLum = lum*1e3f;
+				unit = q_("mcd/m<sup>2</sup>");
+			}
+			desc += q_("<b>Light pollution</b>: %1 %2 (NELM: %3; Bortle class: %4)")
+						.arg(scaledLum).arg(unit).arg(StelCore::luminanceToNELM(lum))
+						.arg(StelCore::luminanceToBortleScaleIndex(lum));
+		}
 	}	
 	return desc;
 }
 
 //! Set flag for displaying cardinal points
-void LandscapeMgr::setFlagCardinalsPoints(const bool displayed)
+void LandscapeMgr::setFlagCardinalPoints(const bool displayed)
 {
-	if (cardinalsPoints->getFlagShow4WCRLabels() != displayed)
+	if (cardinalPoints->getFlagShow4WCRLabels() != displayed)
 	{
-		cardinalsPoints->setFlagShow4WCRLabels(displayed);
-		emit cardinalsPointsDisplayedChanged(displayed);
+		cardinalPoints->setFlagShow4WCRLabels(displayed);
+		emit cardinalPointsDisplayedChanged(displayed);
 	}
 }
 
 //! Get flag for displaying cardinal points
-bool LandscapeMgr::getFlagCardinalsPoints() const
+bool LandscapeMgr::getFlagCardinalPoints() const
 {
-	return cardinalsPoints->getFlagShowCardinals();
+	return cardinalPoints->getFlagShowCardinals();
 }
 
 //! Set flag for displaying ordinal points
-void LandscapeMgr::setFlagOrdinalsPoints(const bool displayed)
+void LandscapeMgr::setFlagOrdinalPoints(const bool displayed)
 {
-	if (cardinalsPoints->getFlagShow8WCRLabels() != displayed)
+	if (cardinalPoints->getFlagShow8WCRLabels() != displayed)
 	{
-		cardinalsPoints->setFlagShow8WCRLabels(displayed);
-		emit ordinalsPointsDisplayedChanged(displayed);
+		cardinalPoints->setFlagShow8WCRLabels(displayed);
+		emit ordinalPointsDisplayedChanged(displayed);
 	}
 }
 
 //! Get flag for displaying ordinal points
-bool LandscapeMgr::getFlagOrdinalsPoints() const
+bool LandscapeMgr::getFlagOrdinalPoints() const
 {
-	return cardinalsPoints->getFlagShow8WCRLabels();
+	return cardinalPoints->getFlagShow8WCRLabels();
 }
 
 //! Set flag for displaying ordinal points
-void LandscapeMgr::setFlagOrdinals16WRPoints(const bool displayed)
+void LandscapeMgr::setFlagOrdinal16WRPoints(const bool displayed)
 {
-	if (cardinalsPoints->getFlagShow16WCRLabels() != displayed)
+	if (cardinalPoints->getFlagShow16WCRLabels() != displayed)
 	{
-		cardinalsPoints->setFlagShow16WCRLabels(displayed);
-		emit ordinals16WRPointsDisplayedChanged(displayed);
+		cardinalPoints->setFlagShow16WCRLabels(displayed);
+		emit ordinal16WRPointsDisplayedChanged(displayed);
 	}
 }
 
 //! Get flag for displaying ordinal points
-bool LandscapeMgr::getFlagOrdinals16WRPoints() const
+bool LandscapeMgr::getFlagOrdinal16WRPoints() const
 {
-	return cardinalsPoints->getFlagShow16WCRLabels();
+	return cardinalPoints->getFlagShow16WCRLabels();
 }
 
 //! Set Cardinals Points color
@@ -1092,15 +1136,15 @@ void LandscapeMgr::setColorCardinalPoints(const Vec3f& v)
 {
 	if(v != getColorCardinalPoints())
 	{
-		cardinalsPoints->setColor(v);
-		emit cardinalsPointsColorChanged(v);
+		cardinalPoints->setColor(v);
+		emit cardinalPointsColorChanged(v);
 	}
 }
 
 //! Get Cardinals Points color
 Vec3f LandscapeMgr::getColorCardinalPoints() const
 {
-	return cardinalsPoints->getColor();
+	return cardinalPoints->getColor();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -1165,13 +1209,6 @@ void LandscapeMgr::setAtmosphereLightPollutionLuminance(const float f)
 float LandscapeMgr::getAtmosphereLightPollutionLuminance() const
 {
 	return atmosphere->getLightPollutionLuminance();
-}
-
-//! Set the light pollution following the Bortle Scale
-void LandscapeMgr::setAtmosphereBortleLightPollution(const int bIndex)
-{
-	// This is an empirical formula
-	setAtmosphereLightPollutionLuminance(qMax(0.f,0.0004f*powf(static_cast<float>(bIndex-1), 2.1f)));
 }
 
 void LandscapeMgr::setZRotation(const float d)
@@ -1588,28 +1625,34 @@ QString LandscapeMgr::getDescription() const
 void LandscapeMgr::increaseLightPollution()
 {
 	StelCore* core = StelApp::getInstance().getCore();
-	int bidx = core->getSkyDrawer()->getBortleScaleIndex() + 1;
+	const auto lum = core->getSkyDrawer()->getLightPollutionLuminance();
+	auto bidx = core->luminanceToBortleScaleIndex(lum) + 1;
 	if (bidx>9)
 		bidx = 9;
-	core->getSkyDrawer()->setBortleScaleIndex(bidx);
+	const auto newLum = core->bortleScaleIndexToLuminance(bidx);
+	core->getSkyDrawer()->setLightPollutionLuminance(newLum);
 }
 
 void LandscapeMgr::reduceLightPollution()
 {
 	StelCore* core = StelApp::getInstance().getCore();
-	int bidx = core->getSkyDrawer()->getBortleScaleIndex() - 1;
+	const auto lum = core->getSkyDrawer()->getLightPollutionLuminance();
+	auto bidx = core->luminanceToBortleScaleIndex(lum) - 1;
 	if (bidx<1)
 		bidx = 1;
-	core->getSkyDrawer()->setBortleScaleIndex(bidx);
+	const auto newLum = core->bortleScaleIndexToLuminance(bidx);
+	core->getSkyDrawer()->setLightPollutionLuminance(newLum);
 }
 
 void LandscapeMgr::cyclicChangeLightPollution()
 {
 	StelCore* core = StelApp::getInstance().getCore();
-	int bidx = core->getSkyDrawer()->getBortleScaleIndex() + 1;
+	const auto lum = core->getSkyDrawer()->getLightPollutionLuminance();
+	auto bidx = core->luminanceToBortleScaleIndex(lum) + 1;
 	if (bidx>9)
 		bidx = 1;
-	core->getSkyDrawer()->setBortleScaleIndex(bidx);
+	const auto newLum = core->bortleScaleIndexToLuminance(bidx);
+	core->getSkyDrawer()->setLightPollutionLuminance(newLum);
 }
 
 /*

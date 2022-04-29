@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Stellarium
  * Copyright (C) 2002 Fabien Chereau
  * Copyright (C) 2011 Alexander Wolf
@@ -54,7 +54,7 @@
 
 // Define version of valid Stellarium DSO Catalog
 // This number must be incremented each time the content or file format of the stars catalogs change
-static const QString StellariumDSOCatalogVersion = "3.13";
+static const QString StellariumDSOCatalogVersion = "3.16";
 
 void NebulaMgr::setLabelsColor(const Vec3f& c) {Nebula::labelColor = c; emit labelsColorChanged(c);}
 const Vec3f NebulaMgr::getLabelsColor(void) const {return Nebula::labelColor;}
@@ -356,7 +356,7 @@ void NebulaMgr::init()
 
 	setFlagUseTypeFilters(conf->value("astro/flag_use_type_filter", false).toBool());
 
-	Nebula::CatalogGroup catalogFilters = Nebula::CatalogGroup(Q_NULLPTR);
+	Nebula::CatalogGroup catalogFilters = Nebula::CatalogGroup(Nebula::CatNone);
 
 	conf->beginGroup("dso_catalog_filters");
 	if (conf->value("flag_show_ngc", true).toBool())
@@ -424,7 +424,7 @@ void NebulaMgr::init()
 	// NB: nebula set loaded inside setter of catalog filter
 	setCatalogFilters(catalogFilters);
 
-	Nebula::TypeGroup typeFilters = Nebula::TypeGroup(Q_NULLPTR);
+	Nebula::TypeGroup typeFilters = Nebula::TypeGroup(Nebula::TypeNone);
 
 	conf->beginGroup("dso_type_filters");
 	if (conf->value("flag_show_galaxies", true).toBool())
