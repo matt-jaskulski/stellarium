@@ -56,6 +56,9 @@ skycultures/dakota/planet_names.fab
 skycultures/egyptian/constellation_names.eng.fab
 skycultures/egyptian/star_names.fab
 skycultures/egyptian/planet_names.fab
+skycultures/egyptian_dendera/constellation_names.eng.fab
+skycultures/egyptian_dendera/star_names.fab
+skycultures/egyptian_dendera/planet_names.fab
 skycultures/greek_almagest/constellation_names.eng.fab
 skycultures/greek_almagest/star_names.fab
 skycultures/greek_almagest/planet_names.fab
@@ -77,6 +80,8 @@ skycultures/indian/planet_names.fab
 skycultures/japanese_moon_stations/constellation_names.eng.fab
 skycultures/japanese_moon_stations/star_names.fab
 skycultures/kamilaroi/constellation_names.eng.fab
+skycultures/khoi-san/constellation_names.eng.fab
+skycultures/khoi-san/star_names.fab
 skycultures/korean/constellation_names.eng.fab
 skycultures/korean/star_names.fab
 skycultures/lokono/constellation_names.eng.fab
@@ -132,3 +137,7 @@ skycultures/western_SnT/constellation_names.eng.fab
 skycultures/western_SnT/star_names.fab
 skycultures/western_sternenkarten/constellation_names.eng.fab
 skycultures/western_sternenkarten/star_names.fab
+skycultures/xhosa/constellation_names.eng.fab
+skycultures/xhosa/star_names.fab
+skycultures/zulu/constellation_names.eng.fab
+skycultures/zulu/star_names.fab

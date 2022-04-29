@@ -52,7 +52,6 @@ Landscape::Landscape(float _radius)
 	, angleRotateZ(0.)
 	, angleRotateZOffset(0.)
 	, sinMinAltitudeLimit(-0.035) //sin(-2 degrees))
-	, defaultBortleIndex(-1)
 	, defaultFogSetting(-1)
 	, defaultExtinctionCoefficient(-1.)
 	, defaultTemperature(-1000.)
@@ -60,6 +59,7 @@ Landscape::Landscape(float _radius)
 	, horizonPolygon(Q_NULLPTR)
 	, fontSize(18)
 	, memorySize(sizeof(Landscape))
+	, multisamplingEnabled_(StelApp::getInstance().getSettings()->value("video/multisampling", 0).toUInt() != 0)
 {
 }
 
@@ -119,9 +119,22 @@ void Landscape::loadCommon(const QSettings& landscapeIni, const QString& landsca
 		if ((tzString.length() > 0))
 			location.ianaTimeZone=StelLocationMgr::sanitizeTimezoneStringFromLocationDB(tzString);
 
-		defaultBortleIndex = landscapeIni.value("location/light_pollution", -1).toInt();
+		auto defaultBortleIndex = landscapeIni.value("location/light_pollution", -1).toInt();
 		if (defaultBortleIndex<=0) defaultBortleIndex=-1; // neg. values in ini file signal "no change".
 		if (defaultBortleIndex>9) defaultBortleIndex=9; // correct bad values.
+		const auto lum = landscapeIni.value("location/light_pollution_luminance");
+		if (lum.isValid())
+		{
+			defaultLightPollutionLuminance = lum;
+
+			if (defaultBortleIndex>=0)
+			{
+				qWarning() << "Landscape light pollution is specified both as luminance and as Bortle scale index."
+				              "Only one value should be specified, preferably luminance.";
+			}
+		}
+		else if (defaultBortleIndex>=0)
+			defaultLightPollutionLuminance = StelCore::bortleScaleIndexToLuminance(defaultBortleIndex);
 
 		defaultFogSetting = landscapeIni.value("location/display_fog", -1).toInt();
 		defaultExtinctionCoefficient = landscapeIni.value("location/atmospheric_extinction_coefficient", -1.0).toDouble();
@@ -727,6 +740,12 @@ void LandscapeOldStyle::drawDecor(StelCore* core, StelPainter& sPainter, const b
 	else
 		sPainter.setColor(Vec3f(landscapeBrightness), landFader.getInterstate());
 
+    const auto gl = sPainter.glFuncs();
+#ifdef GL_MULTISAMPLE
+	if (multisamplingEnabled_)
+		gl->glEnable(GL_MULTISAMPLE);
+#endif
+
 	for (const auto& side : precomputedSides)
 	{
 		if (side.light==drawLight)
@@ -735,6 +754,11 @@ void LandscapeOldStyle::drawDecor(StelCore* core, StelPainter& sPainter, const b
 			sPainter.drawSphericalTriangles(side.arr, true, false, Q_NULLPTR, false);
 		}
 	}
+
+#ifdef GL_MULTISAMPLE
+	if (multisamplingEnabled_)
+		gl->glDisable(GL_MULTISAMPLE);
+#endif
 }
 
 // Draw the ground
@@ -758,6 +782,7 @@ void LandscapeOldStyle::drawGround(StelCore* core, StelPainter& sPainter) const
 		groundTex->bind();
 	}
 	StelVertexArray va(static_cast<const QVector<Vec3d> >(groundVertexArr), StelVertexArray::Triangles, static_cast<const QVector<Vec2f> >(groundTexCoordArr));
+
 	sPainter.drawStelVertexArray(va, true);
 }
 
@@ -899,7 +924,19 @@ void LandscapePolygonal::draw(StelCore* core, bool onlyPolygon)
 	if (!onlyPolygon) // The only useful application of the onlyPolygon is a demo which does not fill the polygon
 	{
 		sPainter.setColor(landscapeBrightness*groundColor, landFader.getInterstate());
+
+    const auto gl = sPainter.glFuncs();
+#ifdef GL_MULTISAMPLE
+	if (multisamplingEnabled_)
+		gl->glEnable(GL_MULTISAMPLE);
+#endif
+
 		sPainter.drawSphericalRegion(horizonPolygon.data(), StelPainter::SphericalPolygonDrawModeFill);
+
+#ifdef GL_MULTISAMPLE
+	if (multisamplingEnabled_)
+		gl->glDisable(GL_MULTISAMPLE);
+#endif
 	}
 
 	if (horizonPolygonLineColor != Vec3f(-1.f,0.f,0.f))

@@ -223,7 +223,7 @@ void LibGPSLookupHelper::query()
 	if (verbose)
 		qDebug() << "GPSD location" << QString("lat %1, long %2, alt %3").arg(loc.latitude).arg(loc.longitude).arg(loc.altitude);
 
-	loc.bortleScaleIndex=StelLocation::DEFAULT_BORTLE_SCALE_INDEX;
+	loc.lightPollutionLuminance=StelLocation::DEFAULT_LIGHT_POLLUTION_LUMINANCE;
 	// Usually you don't leave your time zone with GPS.
 	loc.ianaTimeZone=StelApp::getInstance().getCore()->getCurrentTimeZone();
 	loc.isUserLocation=true;
@@ -385,7 +385,7 @@ void NMEALookupHelper::nmeaUpdated(const QGeoPositionInfo &update)
 		loc.altitude=( qIsNaN(coord.altitude()) ? 0 : static_cast<int>(floor(coord.altitude())));
 		if (verbose)
 			qDebug() << "Location in progress: Long=" << loc.longitude << " Lat=" << loc.latitude << " Alt" << loc.altitude;
-		loc.bortleScaleIndex=StelLocation::DEFAULT_BORTLE_SCALE_INDEX;
+		loc.lightPollutionLuminance=StelLocation::DEFAULT_LIGHT_POLLUTION_LUMINANCE;
 		// Usually you don't leave your time zone with GPS.
 		loc.ianaTimeZone=core->getCurrentTimeZone();
 		loc.isUserLocation=true;
@@ -679,7 +679,10 @@ static float parseAngle(const QString& s, bool* ok)
 		if (!*ok) return 0;
 		float sec = match.captured(3).isEmpty()? 0 : match.captured(3).toFloat(ok);
 		if (!*ok) return 0;
-		return deg + min / 60 + sec / 3600;
+		if (deg < 0)
+			return deg - min / 60 - sec / 3600;
+		else
+			return deg + min / 60 + sec / 3600;
 	}
 	return 0;
 }
@@ -747,12 +750,20 @@ const StelLocation StelLocationMgr::locationFromCLI() const
 {
 	StelLocation ret;
 	QSettings* conf = StelApp::getInstance().getSettings();
-	bool ok;
 	conf->beginGroup("location_run_once");
-	ret.latitude = parseAngle(StelUtils::radToDmsStr(conf->value("latitude").toDouble(), true), &ok);
-	if (!ok) ret.role = '!';
-	ret.longitude = parseAngle(StelUtils::radToDmsStr(conf->value("longitude").toDouble(), true), &ok);
-	if (!ok) ret.role = '!';
+
+	const auto latVar = conf->value("latitude");
+	if (latVar.isValid())
+		ret.latitude = 180/M_PI * latVar.toDouble();
+	else
+		ret.role = '!';
+
+	const auto lonVar = conf->value("longitude");
+	if (lonVar.isValid())
+		ret.longitude = 180/M_PI * lonVar.toDouble();
+	else
+		ret.role = '!';
+	bool ok;
 	ret.altitude = conf->value("altitude", 0).toInt(&ok);
 	ret.planetName = conf->value("home_planet", "Earth").toString();
 	ret.landscapeKey = conf->value("landscape_name", "guereins").toString();
@@ -1043,7 +1054,7 @@ void StelLocationMgr::changeLocationFromNetworkLookup()
 			loc.latitude  = static_cast<float>(latitude);
 			loc.longitude = static_cast<float>(longitude);
 			loc.altitude = 0;
-			loc.bortleScaleIndex = StelLocation::DEFAULT_BORTLE_SCALE_INDEX;
+			loc.lightPollutionLuminance = StelLocation::DEFAULT_LIGHT_POLLUTION_LUMINANCE;
 			loc.ianaTimeZone = (ipTimeZone.isEmpty() ? "" : ipTimeZone);
 			loc.planetName = "Earth";
 			loc.landscapeKey = "";

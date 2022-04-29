@@ -1016,7 +1016,7 @@ void StelMainScriptAPI::clear(const QString& state)
 		ssmgr->setFlagMoonScale(false);
 		ssmgr->setFlagMinorBodyScale(false);
 		ssmgr->setFlagTrails(false);
-		lmgr->setFlagCardinalsPoints(false);
+		lmgr->setFlagCardinalPoints(false);
 		amgr->setFlagLines(false);
 		amgr->setFlagLabels(false);
 		amgr->setFlagRayHelpers(false);
@@ -1293,7 +1293,8 @@ int StelMainScriptAPI::getBortleScaleIndex()
 
 void StelMainScriptAPI::setBortleScaleIndex(int index)
 {
-	StelApp::getInstance().getCore()->getSkyDrawer()->setBortleScaleIndex(index);
+	const auto lum = StelCore::bortleScaleIndexToLuminance(index);
+	StelApp::getInstance().getCore()->getSkyDrawer()->setLightPollutionLuminance(lum);
 }
 
 double StelMainScriptAPI::refraction(double altitude, bool apparent)

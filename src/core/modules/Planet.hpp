@@ -74,6 +74,21 @@ public:
 	StelTextureSP tex;
 };
 
+// Class to calculate Besselian elements of solar eclipse
+class SolarEclipseBessel
+{
+public:
+	SolarEclipseBessel(double &besX, double &besY,
+		double &besDec, double &besTf1, double &besTf2, double &besL1, double &besL2, double &besMu);
+};
+
+// Class to calculate solar eclipse data at given time
+class SolarEclipseData
+{
+public:
+	SolarEclipseData(double JD, double &dRatio, double &latDeg, double &lngDeg, double &altitude,
+		double &pathWidth, double &duration, double &magnitude);
+};
 
 class Planet : public StelObject
 {
@@ -184,12 +199,15 @@ public:
 	//! - distance
 	//! - phase (result of getPhase)
 	//! - illumination (=100*phase)
-	//! - phase-angle
-	//! - phase-angle-dms (formatted string)
-	//! - phase-angle-deg (formatted string)
-	//! - elongation
-	//! - elongation-dms (formatted string)
-	//! - elongation-deg (formatted string)
+	//! - phase-angle (radians)
+	//! - phase-angle-dms (formatted string; DMS)
+	//! - phase-angle-deg (formatted string; degrees)
+	//! - elongation (radians)
+	//! - elongation-dms (formatted string; DMS)
+	//! - elongation-deg (formatted string; degrees)
+	//! - ecl-elongation (elongation in ecliptic longitude or Δλ; on Earth only; radians)
+	//! - ecl-elongation-dms (elongation in ecliptic longitude or Δλ; on Earth only; formatted string; DMS)
+	//! - ecl-elongation-deg (elongation in ecliptic longitude or Δλ; on Earth only; formatted string; degrees)
 	//! - type (object type description)
 	//! - velocity (formatted string)
 	//! - heliocentric-velocity (formatted string)
@@ -785,6 +803,9 @@ private:
 		int skyBrightness;
 		int orenNayarParameters;
 		int outgasParameters;
+
+		// For Mars poles
+		int poleLat; // latitudes of edges of northern (x) and southern (y) polar cap [texture y, moving from 0 (S) to 1 (N)]. Only used for Mars, use [1, 0] for other objects.
 
 		// Moon-specific variables
 		int earthShadow;
