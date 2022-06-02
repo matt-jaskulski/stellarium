@@ -120,21 +120,21 @@ GLuint Planet::shadowTex = 0;
 
 const QMap<Planet::PlanetType, QString> Planet::pTypeMap = // Maps type to english name.
 {
-	{Planet::isStar,	"star"},
-	{Planet::isPlanet,	"planet"},
-	{Planet::isMoon,	"moon"},
-	{Planet::isObserver,	"observer"},
-	{Planet::isArtificial,	"artificial"},
-	{Planet::isAsteroid,	"asteroid"},
-	{Planet::isPlutino,	"plutino"},
-	{Planet::isComet,	"comet"},
-	{Planet::isDwarfPlanet,	"dwarf planet"},
-	{Planet::isCubewano,	"cubewano"},
-	{Planet::isSDO,		"scattered disc object"},
-	{Planet::isOCO,		"Oort cloud object"},
-	{Planet::isSednoid,	"sednoid"},
-	{Planet::isInterstellar,"interstellar object"},
-	{Planet::isUNDEFINED,	"UNDEFINED"} // something must be broken before we ever see this!
+	{ Planet::isStar,	N_("star") },
+	{ Planet::isPlanet,	N_("planet") },
+	{ Planet::isMoon,	N_("moon") },
+	{ Planet::isObserver,	N_("observer") },
+	{ Planet::isArtificial,	N_("artificial") },
+	{ Planet::isAsteroid,	N_("asteroid") },
+	{ Planet::isPlutino,	N_("plutino") },
+	{ Planet::isComet,	N_("comet") },
+	{ Planet::isDwarfPlanet,N_("dwarf planet") },
+	{ Planet::isCubewano,	N_("cubewano") },
+	{ Planet::isSDO,	N_("scattered disc object") },
+	{ Planet::isOCO,	N_("Oort cloud object") },
+	{ Planet::isSednoid,	N_("sednoid") },
+	{ Planet::isInterstellar,N_("interstellar object") },
+	{ Planet::isUNDEFINED,	"UNDEFINED" } // something must be broken before we ever see this!
 };
 
 const QMap<Planet::ApparentMagnitudeAlgorithm, QString> Planet::vMagAlgorithmMap =
@@ -351,7 +351,6 @@ void Planet::replaceTexture(const QString &texName)
 			texMap = StelApp::getInstance().getTextureManager().createTextureThread(texMapFile, StelTexture::StelTextureParams(true, GL_LINEAR, GL_REPEAT));
 		else
 			qWarning()<<"Cannot resolve path to texture file"<<texName<<"of object"<<englishName;
-
 	}
 }
 
@@ -1511,7 +1510,8 @@ QVariantMap Planet::getInfoMap(const StelCore *core) const
 			map.insert("eclipse-magnitude", 0.0);
 		}
 	}
-	map.insert("type", getPlanetTypeString()); // replace existing "type=Planet" by something more detailed.
+	map.insert("type", getType());
+	map.insert("object-type", getObjectType());
 
 	if (onEarth && (getEnglishName()=="Moon"))
 	{
@@ -4695,7 +4695,9 @@ Vec4d Planet::getRTSTime(const StelCore *core, const double altitude) const
 	if (loc.name.contains("->")) // a spaceship
 		return Vec4d(0., 0., 0., -1000.);
 
-	const double currentJD = core->getJD();
+	// Keep time in sync (method from line 592) to fix slow down of time when the moon is selected
+	const double currentJD = core->getJDOfLastJDUpdate();
+	const qint64 millis = core->getMilliSecondsOfLastJDUpdate();
 	const double currentJDE = core->getJDE();
 	double mr, ms, mt, flag=0.;
 
@@ -4759,7 +4761,7 @@ Vec4d Planet::getRTSTime(const StelCore *core, const double altitude) const
 			core1->setJD(currentJD+mt);
 			core1->update(0);
 			Theta2=obsPlanet->getSiderealTime(currentJD+mt, currentJDE+mt) * (M_PI/180.) + L;  // [radians]
-			StelUtils::rectToSphe(&ra, &de, ssystem->getMoon()->getEquinoxEquatorialPos(core));
+			StelUtils::rectToSphe(&ra, &de, ssystem->getMoon()->getEquinoxEquatorialPos(core1));
 			cosH0=(sin(ho)-sin(phi)*sin(de))/(cos(phi)*cos(de));
 			h2=StelUtils::fmodpos(Theta2-ra, 2.*M_PI); if (h2>M_PI) h2-=2.*M_PI; // Hour angle at currentJD. This should be [-pi, pi]
 			mt += -h2*(0.5*rotRate/M_PI);
@@ -4800,13 +4802,13 @@ Vec4d Planet::getRTSTime(const StelCore *core, const double altitude) const
 		{
 			core1->setJD(currentJD+ms);
 			core1->update(0);
-			ho = - getAngularRadius(core) * M_PI_180; // semidiameter;
+			ho = - getAngularRadius(core1) * M_PI_180; // semidiameter;
 			if (core1->getSkyDrawer()->getFlagHasAtmosphere())
 			ho += hoRefraction;
 			if (altitude != 0.)
 				ho = altitude*M_PI_180; // Not sure if we use refraction for off-zero settings?
 			Theta2=obsPlanet->getSiderealTime(currentJD+ms, currentJDE+ms) * (M_PI/180.) + L;  // [radians]
-			StelUtils::rectToSphe(&ra, &de, ssystem->getMoon()->getEquinoxEquatorialPos(core));
+			StelUtils::rectToSphe(&ra, &de, ssystem->getMoon()->getEquinoxEquatorialPos(core1));
 			cosH0=(sin(ho)-sin(phi)*sin(de))/(cos(phi)*cos(de));
 			h2=StelUtils::fmodpos(Theta2-ra, 2.*M_PI); if (h2>M_PI) h2-=2.*M_PI; // Hour angle at currentJD. This should be [-pi, pi]
 			flag=0.;
@@ -4826,6 +4828,7 @@ Vec4d Planet::getRTSTime(const StelCore *core, const double altitude) const
 			ms += ms2;
 		}
 		core1->setJD(currentJD);
+		core1->setMilliSecondsOfLastJDUpdate(millis); // restore millis.
 		core1->update(0); // enforce update
 	}
 	else

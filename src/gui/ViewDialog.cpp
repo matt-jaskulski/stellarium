@@ -161,8 +161,7 @@ void ViewDialog::createDialogContent()
 	ui->pushButtonAtmosphereDetails->setFixedSize(bs);
 	ui->pushButtonSkylightDetails->setFixedSize(bs);
 	ui->tonemappingPushButton->setFixedSize(bs);
-	ui->pushButtonOrbitColors->setFixedSize(bs);
-
+	ui->pushButtonOrbitColors->setFixedSize(bs);	
 
 	// TODOs after properties merge:
 	// Jupiter's GRS should become property, and recheck the other "from trunk" entries.
@@ -277,7 +276,7 @@ void ViewDialog::createDialogContent()
 	connect(ui->pushButtonGrsDetails, SIGNAL(clicked()), this, SLOT(showGreatRedSpotDialog()));
 
 	// Link Solar System Editor button if available...
-	StelModule *sse=StelApp::getInstance().getModuleMgr().getModule("SolarSystemEditor");
+	StelModule *sse=StelApp::getInstance().getModuleMgr().getModule("SolarSystemEditor", true);
 	if (sse)
 		connect(ui->pushButtonSSE, &QPushButton::clicked, [=]{sse->configureGui(true);});
 	else
@@ -295,6 +294,9 @@ void ViewDialog::createDialogContent()
 	NebulaMgr* nmgr = GETSTELMODULE(NebulaMgr);
 	updateSelectedCatalogsCheckBoxes();
 	connect(nmgr, SIGNAL(catalogFiltersChanged(Nebula::CatalogGroup)), this, SLOT(updateSelectedCatalogsCheckBoxes()));
+	connect(ui->selectAllCatalogs, SIGNAL(clicked()), this, SLOT(selectAllCatalogs()));
+	connect(ui->selectStandardCatalogs, SIGNAL(clicked()), this, SLOT(selectStandardCatalogs()));
+	connect(ui->selectNoneCatalogs, SIGNAL(clicked()), this, SLOT(selectNoneCatalogs()));
 	connect(ui->buttonGroupDisplayedDSOCatalogs, SIGNAL(buttonClicked(int)), this, SLOT(setSelectedCatalogsFromCheckBoxes()));
 	updateSelectedTypesCheckBoxes();
 	connect(nmgr, SIGNAL(typeFiltersChanged(Nebula::TypeGroup)), this, SLOT(updateSelectedTypesCheckBoxes()));
@@ -851,6 +853,25 @@ void ViewDialog::updateSelectedCatalogsCheckBoxes()
 	ui->checkBoxRu->setChecked(flags & Nebula::CatRu);
 	ui->checkBoxVdBHa->setChecked(flags & Nebula::CatVdBHa);
 	ui->checkBoxOther->setChecked(flags & Nebula::CatOther);	
+}
+
+void ViewDialog::selectAllCatalogs()
+{
+	GETSTELMODULE(NebulaMgr)->setCatalogFilters(Nebula::CatAll);
+}
+
+void ViewDialog::selectStandardCatalogs()
+{
+	Nebula::CatalogGroup catalogs = Nebula::CatNone;
+	catalogs |= Nebula::CatNGC;
+	catalogs |= Nebula::CatIC;
+	catalogs |= Nebula::CatM;
+	GETSTELMODULE(NebulaMgr)->setCatalogFilters(catalogs);
+}
+
+void ViewDialog::selectNoneCatalogs()
+{
+	GETSTELMODULE(NebulaMgr)->setCatalogFilters(Nebula::CatNone);
 }
 
 void ViewDialog::updateSelectedTypesCheckBoxes()

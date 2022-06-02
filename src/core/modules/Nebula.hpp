@@ -45,10 +45,10 @@ public:
 	{
 		CatNone		= 0x00000000, //!< Nothing selected
 		CatNGC		= 0x00000001, //!< New General Catalogue (NGC)
-		CatIC			= 0x00000002, //!< Index Catalogue (IC)
-		CatM			= 0x00000004, //!< Messier Catalog (M)
-		CatC			= 0x00000008, //!< Caldwell Catalogue (C)
-		CatB			= 0x00000010, //!< Barnard Catalogue (B)
+		CatIC		= 0x00000002, //!< Index Catalogue (IC)
+		CatM		= 0x00000004, //!< Messier Catalog (M)
+		CatC		= 0x00000008, //!< Caldwell Catalogue (C)
+		CatB		= 0x00000010, //!< Barnard Catalogue (B)
 		CatSh2		= 0x00000020, //!< Sharpless Catalogue (Sh 2)
 		CatLBN		= 0x00000040, //!< Lynds' Catalogue of Bright Nebulae (LBN)
 		CatLDN		= 0x00000080, //!< Lynds' Catalogue of Dark Nebulae (LDN)
@@ -69,27 +69,28 @@ public:
 		CatESO		= 0x00400000, //!< ESO/Uppsala Survey of the ESO(B) Atlas (Lauberts, 1982) (ESO)
 		CatVdBH		= 0x00800000, //!< Catalogue of southern stars embedded in nebulosity (van den Bergh+, 1975) (vdBH)
 		CatDWB		= 0x01000000, //!< Catalogue and distances of optically visible H II regions (Dickel+, 1969) (DWB)
-		CatTr			= 0x02000000, //!< Trumpler Catalogue (Tr)
+		CatTr		= 0x02000000, //!< Trumpler Catalogue (Tr)
 		CatSt		= 0x04000000, //!< Stock Catalogue (St)
 		CatRu		= 0x08000000, //!< Ruprecht Catalogue (Ru)
-		CatVdBHa		= 0x10000000, //!< van den Bergh-Hagen Catalogue (vdB-Ha)
-		CatOther		= 0x20000000  //!< without ID
+		CatVdBHa	= 0x10000000, //!< van den Bergh-Hagen Catalogue (vdB-Ha)
+		CatOther		= 0x20000000, //!< without ID
+		CatAll              = 0xFFFFFFFF  //!< All catalogs selected
 	};
 	Q_DECLARE_FLAGS(CatalogGroup, CatalogGroupFlags)
 	Q_FLAG(CatalogGroup)
 
 	enum TypeGroupFlags
 	{
-		TypeNone                = 0x00000000, //!< Nothing selected
-		TypeGalaxies			= 0x00000001, //!< Galaxies
+		TypeNone				= 0x00000000, //!< Nothing selected
+		TypeGalaxies				= 0x00000001, //!< Galaxies
 		TypeActiveGalaxies		= 0x00000002, //!< Different Active Galaxies
 		TypeInteractingGalaxies	= 0x00000004, //!< Interacting Galaxies
-		TypeOpenStarClusters	= 0x00000008, //!< Open Star Clusters
+		TypeOpenStarClusters		= 0x00000008, //!< Open Star Clusters
 		TypeGlobularStarClusters	= 0x00000010, //!< Globular Star Clusters
-		TypeHydrogenRegions	= 0x00000020, //!< Hydrogen Regions
-		TypeBrightNebulae		= 0x00000040, //!< Bright Nebulae
-		TypeDarkNebulae		= 0x00000080, //!< Dark Nebulae
-		TypePlanetaryNebulae	= 0x00000100, //!< Planetary Nebulae
+		TypeHydrogenRegions		= 0x00000020, //!< Hydrogen Regions
+		TypeBrightNebulae			= 0x00000040, //!< Bright Nebulae
+		TypeDarkNebulae			= 0x00000080, //!< Dark Nebulae
+		TypePlanetaryNebulae		= 0x00000100, //!< Planetary Nebulae
 		TypeSupernovaRemnants	= 0x00000200, //!< Supernova Remnants
 		TypeGalaxyClusters		= 0x00000400, //!< Galaxy Clusters
 		TypeOther				= 0x00000800  //!< Other objects
@@ -98,7 +99,6 @@ public:
 	Q_FLAG(TypeGroup)
 
 	//! A pre-defined set of specifiers for the catalogs filter
-	static constexpr CatalogGroup AllCatalogs = static_cast<CatalogGroup>(CatNGC|CatIC|CatM|CatC|CatB|CatSh2|CatLBN|CatLDN|CatRCW|CatVdB|CatCr|CatMel|CatPGC|CatUGC|CatCed|CatArp|CatVV|CatPK|CatPNG|CatSNRG|CatACO|CatHCG|CatESO|CatVdBH|CatDWB|CatTr|CatSt|CatRu|CatOther);
 	static constexpr TypeGroup    AllTypes    = static_cast<TypeGroup>(TypeGalaxies|TypeActiveGalaxies|TypeInteractingGalaxies|TypeOpenStarClusters|TypeGlobularStarClusters|TypeHydrogenRegions|TypeBrightNebulae|TypeDarkNebulae|TypePlanetaryNebulae|TypeSupernovaRemnants|TypeGalaxyClusters|TypeOther);
 
 	//! @enum NebulaType Nebula types
@@ -171,6 +171,10 @@ public:
 	//! - redshift
 	virtual QVariantMap getInfoMap(const StelCore *core) const Q_DECL_OVERRIDE;
 	virtual QString getType() const Q_DECL_OVERRIDE {return NEBULA_TYPE;}
+	virtual QString getObjectType() const Q_DECL_OVERRIDE
+	{
+		return typeEnglishStringMap.value(nType, "undocumented type");
+	}
 	virtual QString getID() const Q_DECL_OVERRIDE {return getDSODesignation(); } //this depends on the currently shown catalog flags, should this be changed?
 	virtual Vec3d getJ2000EquatorialPos(const StelCore* core) const Q_DECL_OVERRIDE;
 	virtual double getCloseViewFov(const StelCore* core = Q_NULLPTR) const Q_DECL_OVERRIDE;
@@ -337,8 +341,7 @@ private:
 
 	static Vec3f labelColor;				// The color of labels
 	static QMap<Nebula::NebulaType, Vec3f>hintColorMap;	// map for rapid lookup. Updated by NebulaMgr whenever a color changes.
-	static QMap<Nebula::NebulaType, QString> typeStringMap; // map that keeps type strings for NebulaType. Must be retranslated on language change.
-	static void buildTypeStringMap();			// (Re-)Fills typeStringMap. Called by NebulaMgr when required.
+	static const QMap<Nebula::NebulaType, QString> typeEnglishStringMap; // map that keeps type strings for NebulaType			// (Re-)Fills typeStringMap. Called by NebulaMgr when required.
 
 	static bool drawHintProportional;     // scale hint with nebula size?
 	static bool surfaceBrightnessUsage;
