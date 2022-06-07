@@ -412,12 +412,32 @@ void PointerCoordinates::draw(StelCore *core)
 		// Perhaps better to use the Atmosphere class directly rather than copy and paste.
 		// Add the light pollution luminance AFTER the scaling to avoid scaling it because it is the cause
 		// of the scaling itself
-		//lumi += fader.getInterstate()*lightPollutionLuminance;
 
-		lumiStr = QString::number(lumi);
+		// Bortle scale is managed by SkyDrawer
+		StelApp *app = &StelApp::getInstance();
+		StelSkyDrawer* drawer = app->getCore()->getSkyDrawer();
+		Q_ASSERT(drawer);
+		float lightPollutionLuminance = drawer->getLightPollutionLuminance();
+
+		// The code below was copied from AtmosphereMgr.cpp. I assume that it triggers and updates values upon location change.
+		// I am hoping that this is not necessary here as the pointer coordinates update automatically.
+
+		//connect(app->getCore(), SIGNAL(locationChanged(StelLocation)), this, SLOT(onLocationChanged(StelLocation)));
+		//connect(app->getCore(), SIGNAL(targetLocationChanged(StelLocation)), this, SLOT(onTargetLocationChanged(StelLocation)));
+		//connect(drawer, &StelSkyDrawer::lightPollutionLuminanceChanged, this, &LandscapeMgr::setAtmosphereLightPollutionLuminance);
+		//connect(app, SIGNAL(languageChanged()), this, SLOT(updateI18n()));
+
+		// As far as I understand, fader is a 0..1 crossfade visual effect and it is safe to assume 1.0 when disabled and showing the sky.
+		//lumi += fader.getInterstate()*lightPollutionLuminance;
+		lumi += lightPollutionLuminance;
+
+		//lumiStr = QString::number(lumi);
+		lumiStr = QString::number(lumi, 'e');
 
 	}
+
 	// End sky luminance mod
+
 
 	QString coordsText = QString("%1: %2/%3%4, %5 lux").arg(coordsSystem, cxt, cyt, constel, lumiStr);
 	x = getCoordinatesPlace(coordsText).first;
