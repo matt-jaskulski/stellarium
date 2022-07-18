@@ -172,6 +172,7 @@ void AstroCalcDialog::retranslate()
 		setLunarEclipseHeaderNames();
 		setSolarEclipseHeaderNames();
 		setSolarEclipseLocalHeaderNames();
+		setTransitHeaderNames();
 		populateCelestialBodyList();
 		populateCelestialCategoryList();
 		populateEphemerisTimeStepsList();
@@ -187,14 +188,7 @@ void AstroCalcDialog::retranslate()
 		// Hack to shrink the tabs to optimal size after language change
 		// by causing the list items to be laid out again.
 		updateTabBarListWidgetWidth();
-		// TODO: make a new private function and call that here and in createDialogContent?
-		QString validDates = QString("%1 1582/10/15 - 9999/12/31").arg(q_("Gregorian dates. Valid range:"));
-		ui->dateFromDateTimeEdit->setToolTip(validDates);
-		ui->dateToDateTimeEdit->setToolTip(validDates);
-		ui->phenomenFromDateEdit->setToolTip(validDates);
-		ui->phenomenToDateEdit->setToolTip(validDates);
-		ui->rtsFromDateEdit->setToolTip(validDates);
-		ui->rtsToDateEdit->setToolTip(validDates);
+		populateToolTips();
 	}
 }
 
@@ -243,6 +237,11 @@ void AstroCalcDialog::createDialogContent()
 	initListWUT();
 	populateTimeIntervalsList();
 	populateWutGroups();
+	populateToolTips();
+
+	ui->lunarElongationLimitSpinBox->setSuffix("°");
+	ui->positiveAltitudeLimitSpinBox->setSuffix("°");
+	ui->monthlyElevationPositiveLimitSpinBox->setSuffix("°");
 
 	ui->genericMarkerColor->setText("1");
 	ui->secondaryMarkerColor->setText("2");
@@ -266,20 +265,12 @@ void AstroCalcDialog::createDialogContent()
 	// TODO: Replace QDateTimeEdit by a new StelDateTimeEdit widget to apply full range of dates
 	// NOTE: https://github.com/Stellarium/stellarium/issues/711
 	const QDate minDate = QDate(1582, 10, 15); // QtDateTime's minimum date is 1.1.100AD, but appears to be always Gregorian.
-	QString validDates = QString("%1 1582/10/15 - 9999/12/31").arg(q_("Gregorian dates. Valid range:"));
 	ui->dateFromDateTimeEdit->setMinimumDate(minDate);
-	ui->dateFromDateTimeEdit->setToolTip(validDates);
 	ui->dateToDateTimeEdit->setMinimumDate(minDate);
-	ui->dateToDateTimeEdit->setToolTip(validDates);
 	ui->phenomenFromDateEdit->setMinimumDate(minDate);
-	ui->phenomenFromDateEdit->setToolTip(validDates);
 	ui->phenomenToDateEdit->setMinimumDate(minDate);
-	ui->phenomenToDateEdit->setToolTip(validDates);
 	ui->rtsFromDateEdit->setMinimumDate(minDate);
-	ui->rtsFromDateEdit->setToolTip(validDates);
 	ui->rtsToDateEdit->setMinimumDate(minDate);
-	ui->rtsToDateEdit->setToolTip(validDates);
-	ui->eclipseFromYearSpinBox->setToolTip(QString("%1 %2..%3").arg(q_("Valid range years:"), QString::number(ui->eclipseFromYearSpinBox->minimum()), QString::number(ui->eclipseFromYearSpinBox->maximum())));
 	ui->pushButtonExtraEphemerisDialog->setFixedSize(QSize(20, 20));
 	ui->pushButtonCustomStepsDialog->setFixedSize(QSize(26, 26));
 
@@ -359,6 +350,11 @@ void AstroCalcDialog::createDialogContent()
 	connect(ui->solareclipseslocalCleanupButton, SIGNAL(clicked()), this, SLOT(cleanupSolarEclipsesLocal()));
 	connect(ui->solareclipseslocalSaveButton, SIGNAL(clicked()), this, SLOT(saveSolarEclipsesLocal()));
 	connect(ui->solareclipselocalTreeWidget, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(selectCurrentSolarEclipseLocal(QModelIndex)));
+	initListTransit();
+	connect(ui->transitsCalculateButton, SIGNAL(clicked()), this, SLOT(generateTransits()));
+	connect(ui->transitsCleanupButton, SIGNAL(clicked()), this, SLOT(cleanupTransits()));
+	connect(ui->transitsSaveButton, SIGNAL(clicked()), this, SLOT(saveTransits()));
+	connect(ui->transitTreeWidget, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(selectCurrentTransit(QModelIndex)));
 
 	// Let's use DMS and decimal degrees as acceptable values for "Maximum allowed separation" input box
 	ui->allowedSeparationSpinBox->setDisplayFormat(AngleSpinBox::DMSSymbols);
@@ -366,7 +362,6 @@ void AstroCalcDialog::createDialogContent()
 	ui->allowedSeparationSpinBox->setMinimum(0.0, true);
 	ui->allowedSeparationSpinBox->setMaximum(20.0, true);
 	ui->allowedSeparationSpinBox->setWrapping(false);
-	ui->allowedSeparationSpinBox->setToolTip(QString("%1: %2 - %3").arg(q_("Valid range"), StelUtils::decDegToDmsStr(ui->allowedSeparationSpinBox->getMinimum(true)), StelUtils::decDegToDmsStr(ui->allowedSeparationSpinBox->getMaximum(true))));
 
 	ui->phenomenaOppositionCheckBox->setChecked(conf->value("astrocalc/flag_phenomena_opposition", false).toBool());
 	connect(ui->phenomenaOppositionCheckBox, SIGNAL(toggled(bool)), this, SLOT(savePhenomenaOppositionFlag(bool)));
@@ -550,6 +545,7 @@ void AstroCalcDialog::createDialogContent()
 	ui->solareclipsesCalculateButton->setShortcut(QKeySequence("Shift+F10"));
 	ui->solareclipseslocalCalculateButton->setShortcut(QKeySequence("Shift+F10"));
 	ui->lunareclipsesCalculateButton->setShortcut(QKeySequence("Shift+F10"));
+	ui->transitsCalculateButton->setShortcut(QKeySequence("Shift+F10"));
 
 	// Let's improve visibility of the text
 	QString style = "QLabel { color: rgb(238, 238, 238); }";
@@ -567,6 +563,7 @@ void AstroCalcDialog::createDialogContent()
 	ui->gammaNoteLabel->setStyleSheet(style);
 	ui->gammaNoteSolarEclipseLabel->setStyleSheet(style);
 	ui->UncertaintiesNoteLabel->setStyleSheet(style);
+	ui->transitNoteLabel->setStyleSheet(style);
 	style = "QCheckBox { color: rgb(238, 238, 238); }";
 	ui->sunAltitudeCheckBox->setStyleSheet(style);
 	ui->moonAltitudeCheckBox->setStyleSheet(style);
@@ -581,6 +578,20 @@ void AstroCalcDialog::createDialogContent()
 	connect(ui->exportGraphsPushButton, &QPushButton::clicked, this, [=]{ saveGraph(ui->twoGraphsChartView); });
 	connect(ui->exportLunarElongationPushButton, &QPushButton::clicked, this, [=]{ saveGraph(ui->lunarElongationChartView); });
 	connect(ui->exportPCPushButton, &QPushButton::clicked, this, [=]{ saveGraph(ui->pcChartView); });
+}
+
+void AstroCalcDialog::populateToolTips()
+{
+	QString validDates = QString("%1 1582/10/15 - 9999/12/31").arg(q_("Gregorian dates. Valid range:"));
+	ui->dateFromDateTimeEdit->setToolTip(validDates);
+	ui->dateToDateTimeEdit->setToolTip(validDates);
+	ui->phenomenFromDateEdit->setToolTip(validDates);
+	ui->phenomenToDateEdit->setToolTip(validDates);
+	ui->rtsFromDateEdit->setToolTip(validDates);
+	ui->rtsToDateEdit->setToolTip(validDates);
+	ui->eclipseFromYearSpinBox->setToolTip(QString("%1 %2..%3").arg(q_("Valid range years:"), QString::number(ui->eclipseFromYearSpinBox->minimum()), QString::number(ui->eclipseFromYearSpinBox->maximum())));
+	ui->allowedSeparationSpinBox->setToolTip(QString("%1: %2..%3").arg(q_("Valid range"), StelUtils::decDegToDmsStr(ui->allowedSeparationSpinBox->getMinimum(true)), StelUtils::decDegToDmsStr(ui->allowedSeparationSpinBox->getMaximum(true))));
+	ui->allowedSeparationLabel->setToolTip(QString("<p>%1</p>").arg(q_("This is a tolerance for the angular distance for conjunctions and oppositions from 0 and 180 degrees respectively.")));
 }
 
 void AstroCalcDialog::saveGraph(QtCharts::QChartView *graph)
@@ -1150,7 +1161,7 @@ void AstroCalcDialog::currentCelestialPositions()
 				else
 					elongStr = StelUtils::radToDmsStr(angularDistance, true);
 
-				fillCelestialPositionTable(dsoName, coordStrings.first, coordStrings.second, magOp, angularSize, asToolTip, extra, mu, sTransit, sMaxElevation, elongStr, q_(obj->getTypeString()));
+				fillCelestialPositionTable(dsoName, coordStrings.first, coordStrings.second, magOp, angularSize, asToolTip, extra, mu, sTransit, sMaxElevation, elongStr, obj->getObjectTypeI18n());
 			}
 		}
 	}
@@ -1248,21 +1259,19 @@ void AstroCalcDialog::currentCelestialPositions()
 				else
 					elongStr = dash;
 
-				fillCelestialPositionTable(planet->getNameI18n(), coordStrings.first, coordStrings.second, planet->getVMagnitudeWithExtinction(core), angularSize, asToolTip, extra, sToolTip, sTransit, sMaxElevation, elongStr, q_(planet->getPlanetTypeString()));
+				fillCelestialPositionTable(planet->getNameI18n(), coordStrings.first, coordStrings.second, planet->getVMagnitudeWithExtinction(core), angularSize, asToolTip, extra, sToolTip, sTransit, sMaxElevation, elongStr, planet->getObjectTypeI18n());
 			}
 		}		
 	}
 	else
 	{
 		// stars
-		QString sType = q_("star");
 		QString commonName, sToolTip = "";
 		QList<StelACStarData> celestialObjects;
 		if (celTypeId == 170)
 		{
 			// double stars
 			celestialObjects = starMgr->getHipparcosDoubleStars();
-			sType = q_("double star");
 		}
 		else if (celTypeId == 171 || celTypeId == 173 || celTypeId == 174)
 		{
@@ -1279,13 +1288,11 @@ void AstroCalcDialog::currentCelestialPositions()
 					celestialObjects = starMgr->getHipparcosClassicalCepheidsTypeStars();
 					break;
 			}
-			sType = q_("variable star");
 		}
 		else
 		{
 			// stars with high proper motion
 			celestialObjects = starMgr->getHipparcosHighPMStars();
-			sType = q_("star with high proper motion");
 		}
 
 		for (const auto& star : qAsConst(celestialObjects))
@@ -1337,7 +1344,7 @@ void AstroCalcDialog::currentCelestialPositions()
 				if (commonName.isEmpty())
 					commonName = obj->getID();
 
-				fillCelestialPositionTable(commonName, coordStrings.first, coordStrings.second, obj->getVMagnitudeWithExtinction(core), dash, "", extra, sToolTip, sTransit, sMaxElevation, elongStr, sType);
+				fillCelestialPositionTable(commonName, coordStrings.first, coordStrings.second, obj->getVMagnitudeWithExtinction(core), dash, "", extra, sToolTip, sTransit, sMaxElevation, elongStr, obj->getObjectTypeI18n());
 			}
 		}
 		ui->celestialPositionsTreeWidget->hideColumn(CColumnAngularSize);
@@ -2528,7 +2535,7 @@ void AstroCalcDialog::generateLunarEclipses()
 		double startyear = ui->eclipseFromYearSpinBox->value();
 		double years = ui->eclipseYearsSpinBox->value();
 		double startJD, stopJD;
-		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 1);
+		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 0);
 		StelUtils::getJDFromDate(&stopJD, startyear+years, 12, 31, 23, 59, 59);
 		startJD = startJD - core->getUTCOffset(startJD) / 24.;
 		stopJD = stopJD - core->getUTCOffset(stopJD) / 24.;
@@ -2974,7 +2981,7 @@ void AstroCalcDialog::generateSolarEclipses()
 		int startyear = ui->eclipseFromYearSpinBox->value();
 		int years = ui->eclipseYearsSpinBox->value();
 		double startJD, stopJD;
-		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 1);
+		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 0);
 		StelUtils::getJDFromDate(&stopJD, startyear+years, 12, 31, 23, 59, 59);
 		startJD = startJD - core->getUTCOffset(startJD) / 24.;
 		stopJD = stopJD - core->getUTCOffset(stopJD) / 24.;
@@ -3243,7 +3250,7 @@ void AstroCalcDialog::generateSolarEclipsesLocal()
 		int startyear = ui->eclipseFromYearSpinBox->value();
 		int years = ui->eclipseYearsSpinBox->value();
 		double startJD, stopJD;
-		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 1);
+		StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 0);
 		StelUtils::getJDFromDate(&stopJD, startyear+years, 12, 31, 23, 59, 59);
 		startJD = startJD - core->getUTCOffset(startJD) / 24.;
 		stopJD = stopJD - core->getUTCOffset(stopJD) / 24.;
@@ -3740,6 +3747,723 @@ void AstroCalcDialog::saveSolarEclipsesLocal()
 		}
 
 		xlsx.write(count+3, 1, q_("Note: Local circumstances for eclipses during thousands of years in the past and future are not reliable due to uncertainty in ΔT which is caused by fluctuations in Earth's rotation."));
+
+		for (int i = 0; i < columns; i++)
+		{
+			xlsx.setColumnWidth(i+1, width[i]+2);
+		}
+
+		delete[] width;
+		xlsx.saveAs(filePath);
+	}
+}
+
+void AstroCalcDialog::setTransitHeaderNames()
+{
+	transitHeader.clear();
+	transitHeader << qc_("Date of mid-transit", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << q_("Planet");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Exterior Ingress", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Interior Ingress", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Mid-transit", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Angular Distance", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Interior Egress", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Exterior Egress", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Duration", "column name");
+	// TRANSLATORS: The name of column in AstroCalc/Eclipses/Transits tool
+	transitHeader << qc_("Observable Duration", "column name");
+	ui->transitTreeWidget->setHeaderLabels(transitHeader);
+
+	// adjust the column width
+	for (int i = 0; i < TransitCount; ++i)
+	{
+		ui->transitTreeWidget->resizeColumnToContents(i);
+	}
+}
+
+void AstroCalcDialog::initListTransit()
+{
+	ui->transitTreeWidget->clear();
+	ui->transitTreeWidget->setColumnCount(TransitCount);
+	setTransitHeaderNames();
+	ui->transitTreeWidget->header()->setSectionsMovable(false);
+	ui->transitTreeWidget->header()->setDefaultAlignment(Qt::AlignCenter);
+}
+
+// Local transit parameters
+struct LocalTransitparams {
+	double dt;
+	double L1;
+	double L2;
+	double ce;
+	double magnitude;
+	double altitude;
+};
+
+LocalTransitparams localTransit(double JD, int contact, bool central, PlanetP object, bool topocentric) {
+	LocalTransitparams result;
+	// contact : -1 for beginning, 0 for mid-transit, 1 for the ending
+	// central : true for full transit
+
+	// Besselian elements
+	// Source: Explanatory Supplement to the Astronomical Ephemeris 
+	// and the American Ephemeris and Nautical Almanac (1961)
+
+	StelCore* core = StelApp::getInstance().getCore();
+	static SolarSystem* ssystem = GETSTELMODULE(SolarSystem);
+	double lat = static_cast<double>(core->getCurrentLocation().latitude);
+	double lon = static_cast<double>(core->getCurrentLocation().longitude);
+	double elevation = static_cast<double>(core->getCurrentLocation().altitude);
+	double rc = 0., rs = 0.;
+	if (topocentric)
+	{
+		Vec4d geocentricCoords = ssystem->getEarth()->getRectangularCoordinates(lon,lat,elevation);
+		static const double earthRadius = ssystem->getEarth()->getEquatorialRadius();
+		rc = geocentricCoords[0]/earthRadius; // rhoCosPhiPrime
+		rs = geocentricCoords[1]/earthRadius; // rhoSinPhiPrime
+	}
+	core->setUseTopocentricCoordinates(false);
+	core->setJD(JD);
+	core->update(0);
+
+	double x,y,d,tf1,tf2,L1,L2,mu;
+	TransitBessel(object,x,y,d,tf1,tf2,L1,L2,mu);
+
+	core->setJD(JD - 5./1440.);
+	core->update(0);
+	double x1,y1,d1,mu1;
+	TransitBessel(object,x1,y1,d1,tf1,tf2,L1,L2,mu1);
+
+	core->setJD(JD + 5./1440.);
+	core->update(0);
+	double x2,y2,d2,mu2;
+	TransitBessel(object,x2,y2,d2,tf1,tf2,L1,L2,mu2);
+
+	// Hourly rate of changes
+	const double xdot = (x2 - x1) * 6.;
+	const double ydot = (y2 - y1) * 6.;
+	const double ddot = (d2 - d1) * 6.;
+	double mudot = mu2 - mu1;
+	if (mudot < 0.) mudot += 360.; // make sure it is positive in case mu2 < mu1
+	mudot = mudot * 6. * M_PI_180;
+	double theta = (mu + lon) * M_PI_180;
+	theta = StelUtils::fmodpos(theta, 2.*M_PI);
+	const double xi = rc*sin(theta);
+	const double eta = rs*cos(d)-rc*sin(d)*cos(theta);
+	const double zeta = rs*sin(d)+rc*cos(d)*cos(theta);
+	const double xidot = mudot * rc * cos(theta);
+	const double etadot = mudot*xi*sin(d)-zeta*ddot;
+	const double u = x - xi;
+	const double v = y - eta;
+	const double udot = xdot - xidot;
+	const double vdot = ydot - etadot;
+	const double n2 = udot * udot + vdot * vdot;
+	const double delta = (u * vdot - udot * v) / sqrt(udot * udot + vdot * vdot);
+	L1 = L1 - zeta * tf1;
+	L2 = L2 - zeta * tf2;
+	double L = L1;
+	if (central) L = L2;
+	const double sfi = delta/L;
+	const double ce = 1.- sfi*sfi;
+	double cfi = 0.; 
+	if (ce > 0.)
+		cfi = contact * sqrt(ce);
+	const double m = sqrt(u * u + v * v);
+	const double magnitude = (L1 - m) / (L1 + L2);
+	const double altitude = asin(rc*cos(d)*cos(theta)+rs*sin(d)) / M_PI_180;
+	const double dt = (L * cfi / sqrt(udot * udot + vdot * vdot)) - (u * udot + v * vdot) / n2;
+	result.dt = dt;
+	result.L1 = L1;
+	result.L2 = L2;
+	result.ce = ce;
+	result.magnitude = magnitude;
+	result.altitude = altitude;
+	return result;
+}
+
+TransitBessel::TransitBessel(PlanetP object, double &besX, double &besY,
+	double &besD, double &bestf1, double &bestf2, double &besL1, double &besL2, double &besMu)
+{
+	// Besselian elements (adapted from solar eclipse)
+	// Source: Explanatory Supplement to the Astronomical Ephemeris 
+	// and the American Ephemeris and Nautical Almanac (1961)
+
+	StelCore* core = StelApp::getInstance().getCore();
+	static SolarSystem* ssystem = GETSTELMODULE(SolarSystem);
+	core->setUseTopocentricCoordinates(false);
+	core->update(0);
+
+	double raPlanet, dePlanet, raSun, deSun;
+	StelUtils::rectToSphe(&raSun, &deSun, ssystem->getSun()->getEquinoxEquatorialPos(core));
+	StelUtils::rectToSphe(&raPlanet, &dePlanet, object->getEquinoxEquatorialPos(core));
+
+	double sdistanceAu = ssystem->getSun()->getEquinoxEquatorialPos(core).length();
+	const double earthRadius = ssystem->getEarth()->getEquatorialRadius()*AU;
+	// Planet's distance in Earth's radius
+	double pdistanceER = object->getEquinoxEquatorialPos(core).length() * AU / earthRadius;
+	// Greenwich Apparent Sidereal Time
+	const double gast = get_apparent_sidereal_time(core->getJD(), core->getJDE());
+	// Avoid bug for special cases happen around Vernal Equinox
+	double raDiff = StelUtils::fmodpos(raPlanet-raSun, 2.*M_PI);
+	if (raDiff>M_PI) raDiff-=2.*M_PI;
+
+	constexpr double SunEarth = 109.12278; // ratio of Sun-Earth radius : 109.12278 = 696000/6378.1366
+	const double rss = sdistanceAu * 23454.7925; // from 1 AU/Earth's radius : 149597870.8/6378.1366
+	const double b = pdistanceER / rss;
+	const double a = raSun - ((b * cos(dePlanet) * raDiff) / ((1 - b) * cos(deSun)));
+	besD = deSun - (b * (dePlanet - deSun) / (1 - b));
+	besX = cos(dePlanet) * sin((raPlanet - a));
+	besX *= pdistanceER;
+	besY = cos(besD) * sin(dePlanet);
+	besY -= cos(dePlanet) * sin(besD) * cos((raPlanet - a));
+	besY *= pdistanceER;
+	double z = sin(dePlanet) * sin(besD);
+	z += cos(dePlanet) * cos(besD) * cos((raPlanet - a));
+	z *= pdistanceER;
+
+	// Ratio of Planet/Earth's radius
+	double k = object->getEquatorialRadius()/ssystem->getEarth()->getEquatorialRadius();
+	// Parameters of the shadow cone
+	const double f1 = asin((SunEarth + k) / (rss * (1. - b)));
+	bestf1 = tan(f1);
+	const double f2 = asin((SunEarth - k) / (rss * (1. - b)));  
+	bestf2 = tan(f2);
+	besL1 = z * bestf1 + (k / cos(f1));
+	besL2 = z * bestf2 - (k / cos(f2));
+	besMu = gast - a * M_180_PI;
+	besMu = StelUtils::fmodpos(besMu, 360.);
+};
+
+void AstroCalcDialog::generateTransits()
+{
+	const bool onEarth = core->getCurrentPlanet()==solarSystem->getEarth();
+	if (onEarth)
+	{
+		initListTransit();
+		const double currentJD = core->getJD(); // save current JD
+		const bool saveTopocentric = core->getUseTopocentricCoordinates();
+		const bool withDecimalDegree = StelApp::getInstance().getFlagShowDecimalDegrees();
+		for (int p = 0; p < 2; p++)
+		{
+			double startyear = ui->eclipseFromYearSpinBox->value();
+			double years = ui->eclipseYearsSpinBox->value();
+			double startJD, stopJD;
+			StelUtils::getJDFromDate(&startJD, startyear, 1, 1, 0, 0, 0);
+			StelUtils::getJDFromDate(&stopJD, startyear+years, 12, 31, 23, 59, 59);
+			startJD = startJD - core->getUTCOffset(startJD) / 24.;
+			stopJD = stopJD - core->getUTCOffset(stopJD) / 24.;
+			QString planetStr, separationStr, durationStr, observableDurationStr;
+			double approxJD, synodicPeriod;
+			if (p == 0)
+			{
+				 // Mercury
+				approxJD = 2451612.023;
+				synodicPeriod = 115.8774771;
+			}
+			else
+			{
+				// Venus
+				approxJD = 2451996.706;
+				synodicPeriod = 583.921361;
+			}
+			int elements = static_cast<int>((stopJD - startJD) / synodicPeriod);
+			// Find approximate JD of Inferior conjunction
+			double tmp = (startJD - approxJD - synodicPeriod) / synodicPeriod;
+			double InitJD = approxJD + int(tmp) * synodicPeriod;
+			
+			// Search for transits at each inferior conjunction
+			for (int i = 0; i <= elements+2; i++)
+			{
+				double JD = InitJD + synodicPeriod * i;
+				if (JD > startJD)
+				{
+					core->setUseTopocentricCoordinates(false);
+					core->update(0);
+
+					// Find exact time of minimum distance between Mercury/Venus and the Sun
+					double dt = 1.;
+					int iteration = 0;
+					PlanetP object;
+					if (p==0)
+					{
+						object = GETSTELMODULE(SolarSystem)->searchByEnglishName("Mercury");
+						planetStr = q_("Mercury");
+					}
+					else
+					{
+						object = GETSTELMODULE(SolarSystem)->searchByEnglishName("Venus");
+						planetStr = q_("Venus");
+					}
+
+					while (abs(dt)>(0.1/86400.) && (iteration < 20)) // 0.1 second of accuracy
+					{
+						core->setJD(JD);
+						core->update(0);
+						double x,y,d,tf1,tf2,L1,L2,mu;
+						TransitBessel(object,x,y,d,tf1,tf2,L1,L2,mu);
+
+						core->setJD(JD - 5./1440.);
+						core->update(0);
+						double x1,y1;
+						TransitBessel(object,x1,y1,d,tf1,tf2,L1,L2,mu);
+
+						core->setJD(JD + 5./1440.);
+						core->update(0);
+						double x2,y2;
+						TransitBessel(object,x2,y2,d,tf1,tf2,L1,L2,mu);
+
+						double xdot1 = (x - x1) * 12.;
+						double xdot2 = (x2 - x) * 12.;
+						double xdot = (xdot1 + xdot2) / 2.;
+						double ydot1 = (y - y1) * 12.;
+						double ydot2 = (y2 - y) * 12.;
+						double ydot = (ydot1 + ydot2) / 2.;
+						double n2 = xdot * xdot + ydot * ydot;
+						dt  = -(x * xdot + y * ydot) / n2;
+						JD += dt / 24.;
+						iteration += 1;
+					}
+					core->setJD(JD);
+					core->update(0);
+					
+					double x,y,d,tf1,tf2,L1,L2,mu;
+					TransitBessel(object,x,y,d,tf1,tf2,L1,L2,mu);
+					double gamma = sqrt(x * x + y * y);
+					if (gamma <= (0.9972+L1) && (JD <= stopJD)) // Transit occurs on this JD
+					{
+						double dt = 1.;
+						int iteration = 0;
+						double JDMid = JD;
+						double az, altitudeMidtransit = -1.;
+						double altitudeContact1 = -1., altitudeContact2 = -1., altitudeContact3 = -1., altitudeContact4 = -1.;
+						double JD1 = 0., JD2 = 0., JD3 = 0., JD4 = 0., JDc1 = 0., JDc4 = 0.;
+						double transitMagnitude;
+						Vec4d rts;
+						// Time of mid-transit
+						LocalTransitparams transitData = localTransit(JD,0,false,object,saveTopocentric);
+						while (abs(dt) > 0.000001 && (iteration < 20))
+						{
+							transitData = localTransit(JD,0,false,object,saveTopocentric);
+							dt = transitData.dt;
+							JD += dt / 24.;
+							iteration += 1;
+						}
+						JDMid = JD;
+						transitMagnitude = transitData.magnitude;
+						core->setJD(JDMid);
+						core->update(0);
+						StelUtils::rectToSphe(&az,&altitudeMidtransit,object->getAltAzPosAuto(core));
+
+						if (transitMagnitude > 0.)
+						{
+							// 1st contact = Exterior Ingress
+							iteration = 0;
+							JD1 = JDMid;
+							transitData = localTransit(JD1,-1,false,object,saveTopocentric);
+							dt = transitData.dt;
+							while (abs(dt) > 0.000001 && (iteration < 20))
+							{
+								transitData = localTransit(JD1,-1,false,object,saveTopocentric);
+								dt = transitData.dt;
+								JD1 += dt / 24.;
+								iteration += 1;
+							}
+							core->setJD(JD1);
+							core->update(0);
+							StelUtils::rectToSphe(&az,&altitudeContact1,object->getAltAzPosAuto(core));
+
+							// 4th contact = Exterior Egress
+							iteration = 0;
+							JD4 = JDMid;
+							transitData = localTransit(JD4,1,false,object,saveTopocentric);
+							dt = transitData.dt;
+							while (abs(dt) > 0.000001 && (iteration < 20))
+							{
+								transitData = localTransit(JD4,1,false,object,saveTopocentric);
+								dt = transitData.dt;
+								JD4 += dt / 24.;
+								iteration += 1;
+							}
+							core->setJD(JD4);
+							core->update(0);
+							StelUtils::rectToSphe(&az,&altitudeContact4,object->getAltAzPosAuto(core));
+							JDc1=JD1;
+							JDc4=JD4;
+
+							// 2nd contact = Interior Ingress
+							iteration = 0;
+							JD2 = JDMid;
+							transitData = localTransit(JD2,-1,true,object,saveTopocentric);
+							dt = transitData.dt;
+							while (abs(dt) > 0.000001 && (iteration < 20))
+							{
+								transitData = localTransit(JD2,-1,true,object,saveTopocentric);
+								dt = transitData.dt;
+								JD2 += dt / 24.;
+								iteration += 1;
+							}
+							core->setJD(JD2);
+							core->update(0);
+							StelUtils::rectToSphe(&az,&altitudeContact2,object->getAltAzPosAuto(core));
+							// 3rd contact = Interior Egress
+							iteration = 0;
+							JD3 = JDMid;
+							transitData = localTransit(JD3,1,true,object,saveTopocentric);
+							dt = transitData.dt;
+							while (abs(dt) > 0.000001 && (iteration < 20))
+							{
+								transitData = localTransit(JD3,1,true,object,saveTopocentric);
+								dt = transitData.dt;
+								JD3 += dt / 24.;
+								iteration += 1;
+							}
+							core->setJD(JD3);
+							core->update(0);
+							StelUtils::rectToSphe(&az,&altitudeContact3,object->getAltAzPosAuto(core));
+
+							// Transit in progress at sunrise/sunset
+							if (saveTopocentric && transitMagnitude > 0.)
+							{
+								if (altitudeContact1 < 0. && altitudeContact4 > 0.) // Transit in progress at sunrise
+								{
+									// find rising time of planet
+									for (int j = 0; j <= 5; j++)
+									{
+										transitData = localTransit(JD - 5./1440.,0,false,object,true);
+										double alt1 = transitData.altitude+.3;
+										transitData = localTransit(JD + 5./1440.,0,false,object,true);
+										double alt2 = transitData.altitude+.3;
+										double dt = .006944444 * alt1 / (alt2 - alt1);
+										JD = JD - 5./1440. - dt;
+										transitData = localTransit(JD,0,false,object,true);
+									}
+									core->setJD(JD);
+									core->update(0);
+									rts = object->getRTSTime(core);
+									JD = rts[0];
+									if (JD<JD1) // make sure it's after C1
+									{
+										core->setJD(JD+1.);
+										core->update(0);
+										rts = object->getRTSTime(core);
+									}
+									else if (JD>JD4) // make sure it's before C4
+									{
+										core->setJD(JD-1.);
+										core->update(0);
+										rts = object->getRTSTime(core);
+									}
+									JDc1 = rts[0];
+								}
+
+								if (altitudeContact1 > 0. && altitudeContact4 < 0.) // Transit in progress at sunset
+								{
+									// find setting time of planet
+									for (int j = 0; j <= 5; j++)
+									{
+										transitData = localTransit(JD - 5./1440.,0,false,object,true);
+										double alt1 = transitData.altitude+.3;
+										transitData = localTransit(JD + 5./1440.,0,false,object,true);
+										double alt2 = transitData.altitude+.3;
+										double dt = .006944444 * alt1 / (alt2 - alt1);
+										JD = JD - 5./1440. - dt;
+										transitData = localTransit(JD,0,false,object,true);
+									}
+									core->setJD(JD);
+									core->update(0);
+									rts = object->getRTSTime(core);
+									JD = rts[2];
+									if (JD<JD1) // make sure it's after C1
+									{
+										core->setJD(JD+1.);
+										core->update(0);
+										rts = object->getRTSTime(core);
+									}
+									else if (JD>JD4) // make sure it's before C4
+									{
+										core->setJD(JD-1.);
+										core->update(0);
+										rts = object->getRTSTime(core);
+									}
+									JDc4 = rts[2];
+								}
+							}
+						}
+						const double shift = core->getUTCOffset(JDMid)/24.;
+						ACTransitTreeWidgetItem* treeItem = new ACTransitTreeWidgetItem(ui->transitTreeWidget);
+						treeItem->setText(TransitDate, QString("%1 %2").arg(localeMgr->getPrintableDateLocal(JDMid), localeMgr->getPrintableTimeLocal(JDMid))); // local date and time
+						treeItem->setData(TransitDate, Qt::UserRole, JDMid);
+						treeItem->setText(TransitPlanet, planetStr);
+						treeItem->setData(TransitPlanet, Qt::UserRole, planetStr);
+
+						if (transitMagnitude > 0.)
+						{
+							if (saveTopocentric && altitudeContact1 < 0.)
+								{
+									treeItem->setText(TransitContact1, QString("(%1)").arg(localeMgr->getPrintableTimeLocal(JD1)));
+									treeItem->setTextColor(TransitContact1, Qt::gray);
+								}
+							else
+								treeItem->setText(TransitContact1, QString("%1").arg(localeMgr->getPrintableTimeLocal(JD1)));
+						}
+						else
+							treeItem->setText(TransitContact1, dash);
+						treeItem->setData(TransitContact1, Qt::UserRole, StelUtils::getHoursFromJulianDay(JD1 + shift));
+						treeItem->setToolTip(TransitContact1, q_("The time of first contact, the instant when the planet's disk is externally tangent to the Sun (transit begins)"));
+						if (transitData.ce <= 0.)
+								treeItem->setText(TransitContact2, dash);
+						else if (saveTopocentric && altitudeContact2 < 0.)
+						{
+							treeItem->setText(TransitContact2, QString("(%1)").arg(localeMgr->getPrintableTimeLocal(JD2)));
+							treeItem->setTextColor(TransitContact2, Qt::gray);
+						}
+						else
+							treeItem->setText(TransitContact2, QString("%1").arg(localeMgr->getPrintableTimeLocal(JD2)));
+						treeItem->setData(TransitContact2, Qt::UserRole, StelUtils::getHoursFromJulianDay(JD2 + shift));
+						treeItem->setToolTip(TransitContact2, q_("The time of second contact, the entire disk of the planet is internally tangent to the Sun"));
+						if (transitMagnitude > 0.)
+						{
+							if (saveTopocentric && altitudeMidtransit < 0.)
+								{
+									treeItem->setText(TransitMid, QString("(%1)").arg(localeMgr->getPrintableTimeLocal(JDMid)));
+									treeItem->setTextColor(TransitMid, Qt::gray);
+								}
+							else
+								treeItem->setText(TransitMid, QString("%1").arg(localeMgr->getPrintableTimeLocal(JDMid)));
+						}
+						else
+							treeItem->setText(TransitMid, dash);
+						treeItem->setData(TransitMid, Qt::UserRole, StelUtils::getHoursFromJulianDay(JDMid + shift));
+						treeItem->setToolTip(TransitMid, q_("The time of minimum angular distance of planet to Sun's center"));
+						core->setUseTopocentricCoordinates(saveTopocentric);
+						core->setJD(JDMid);
+						core->update(0);
+						double elongation = object->getElongation(core->getObserverHeliocentricEclipticPos());
+						if (withDecimalDegree)
+							separationStr = StelUtils::radToDecDegStr(elongation, 5, false, true);
+						else
+							separationStr = StelUtils::radToDmsStr(elongation, true);
+						treeItem->setText(TransitSeparation, separationStr);
+						if ((saveTopocentric && altitudeMidtransit < 0.) || transitMagnitude < 0.) 
+							treeItem->setTextColor(TransitSeparation, Qt::gray);
+						treeItem->setData(TransitSeparation, Qt::UserRole, elongation);
+						treeItem->setToolTip(TransitSeparation, q_("Minimum angular distance of planet to Sun's center"));
+						if (transitData.ce <= 0.)
+								treeItem->setText(TransitContact3, dash);
+						else if (saveTopocentric && altitudeContact3 < 0.)
+						{
+							treeItem->setText(TransitContact3, QString("(%1)").arg(localeMgr->getPrintableTimeLocal(JD3)));
+							treeItem->setTextColor(TransitContact3, Qt::gray);
+						}
+						else
+							treeItem->setText(TransitContact3, QString("%1").arg(localeMgr->getPrintableTimeLocal(JD3)));
+						treeItem->setData(TransitContact3, Qt::UserRole, StelUtils::getHoursFromJulianDay(JD3 + shift));
+						treeItem->setToolTip(TransitContact3, q_("The time of third contact, the planet reaches the opposite limb and is once again internally tangent to the Sun"));
+						if (transitMagnitude > 0.)
+						{
+							if (saveTopocentric && altitudeContact4 < 0.)
+							{
+								treeItem->setText(TransitContact4, QString("(%1)").arg(localeMgr->getPrintableTimeLocal(JD4)));
+								treeItem->setTextColor(TransitContact4, Qt::gray);
+							}
+							else
+								treeItem->setText(TransitContact4, QString("%1").arg(localeMgr->getPrintableTimeLocal(JD4)));
+						}
+						else
+							treeItem->setText(TransitContact4, dash);
+						treeItem->setData(TransitContact4, Qt::UserRole, StelUtils::getHoursFromJulianDay(JD4 + shift));
+						treeItem->setToolTip(TransitContact4, q_("The time of fourth contact, the planet's disk is externally tangent to the Sun (transit ends)"));
+						double totalDuration = 0.;
+						if (transitMagnitude > 0.)
+						{
+							totalDuration = (JD4-JD1)*24.;
+							durationStr = StelUtils::hoursToHmsStr(totalDuration,true);
+							treeItem->setText(TransitDuration, durationStr);
+						}
+						else
+							treeItem->setText(TransitDuration, dash);
+						treeItem->setData(TransitDuration, Qt::UserRole, totalDuration);
+						treeItem->setToolTip(TransitDuration, q_("Total duration of transit"));
+						// Observable duration (rise/set are taken into account)
+						double observableDuration = 0.;
+						if (saveTopocentric && transitMagnitude > 0.)
+						{
+							if (altitudeContact1 < 0. && altitudeContact4 < 0.)
+							{
+								observableDurationStr = dash;
+								// Special case: C1,C4 occur below horizon but visible around mid-transit
+								// Example: 2019 November 11 at Lat. +70, Long. -55
+								if (altitudeMidtransit > 0.)
+								{
+									core->setJD(JDMid);
+									core->update(0);
+									rts = object->getRTSTime(core);
+									if (rts[0]>JD1 && rts[2]<JD4)
+									{
+										observableDuration = (rts[2]-rts[0])*24.;
+										observableDurationStr = StelUtils::hoursToHmsStr(observableDuration,true);
+									}
+								}
+							}
+							else if (altitudeContact1 > 0. && altitudeMidtransit < 0. && altitudeContact4 > 0.)
+							{
+								// Special case: C1,C4 occur above horizon but invisible around mid-transit
+								// Example: 2012 June 5/6 Lat. +60, Long. -20
+								// Overall duration is combination of two separate durations 
+								core->setJD(JD1);
+								core->update(0);
+								rts = object->getRTSTime(core);
+								if (rts[2]>JD1)
+									observableDuration = (rts[2]-JD1)*24.;
+								core->setJD(JD4);
+								core->update(0);
+								rts = object->getRTSTime(core);
+								if (JD4>rts[0])
+									observableDuration += (JD4-rts[0])*24.;
+								observableDurationStr = StelUtils::hoursToHmsStr(observableDuration,true);
+							}
+							else
+							{
+								observableDuration = (JDc4-JDc1)*24.;
+								observableDurationStr = StelUtils::hoursToHmsStr(observableDuration,true);
+							}
+						}
+						else
+						{
+							observableDurationStr = dash; // geocentric - no observable duration
+						}
+						treeItem->setText(TransitObservableDuration, observableDurationStr);
+						treeItem->setData(TransitObservableDuration, Qt::UserRole, observableDuration);
+						treeItem->setToolTip(TransitObservableDuration, q_("Observable duration of transit"));
+						treeItem->setTextAlignment(TransitDate, Qt::AlignRight);
+						treeItem->setTextAlignment(TransitPlanet, Qt::AlignRight);
+						treeItem->setTextAlignment(TransitContact1, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitContact2, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitMid, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitSeparation, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitContact3, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitContact4, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitDuration, Qt::AlignCenter);
+						treeItem->setTextAlignment(TransitObservableDuration, Qt::AlignCenter);
+					}
+				}
+			}
+		}
+		core->setJD(currentJD);
+		core->setUseTopocentricCoordinates(saveTopocentric);
+		core->update(0); // enforce update
+
+		// adjust the column width
+		for (int i = 0; i < TransitCount; ++i)
+		{
+			ui->transitTreeWidget->resizeColumnToContents(i);
+		}
+
+		// sort-by-date
+		ui->transitTreeWidget->sortItems(TransitDate, Qt::AscendingOrder);
+	}
+	else
+		cleanupTransits();
+}
+
+void AstroCalcDialog::cleanupTransits()
+{
+	ui->transitTreeWidget->clear();
+}
+
+void AstroCalcDialog::selectCurrentTransit(const QModelIndex& modelIndex)
+{
+	// Find the planet
+	QString name = modelIndex.sibling(modelIndex.row(), TransitPlanet).data(Qt::UserRole).toString();
+	double JD = modelIndex.sibling(modelIndex.row(), TransitDate).data(Qt::UserRole).toDouble();
+
+	if (objectMgr->findAndSelectI18n(name) || objectMgr->findAndSelect(name))
+	{
+		core->setJD(JD);
+		const QList<StelObjectP> newSelected = objectMgr->getSelectedObject();
+		if (!newSelected.empty())
+		{
+			// Can't point to home planet
+			if (newSelected[0]->getEnglishName() != core->getCurrentLocation().planetName)
+			{
+				mvMgr->moveToObject(newSelected[0], mvMgr->getAutoMoveDuration());
+				mvMgr->setFlagTracking(true);
+			}
+			else
+			{
+				GETSTELMODULE(StelObjectMgr)->unSelect();
+			}
+		}
+	}
+}
+
+void AstroCalcDialog::saveTransits()
+{
+	QString filter = q_("Microsoft Excel Open XML Spreadsheet");
+	filter.append(" (*.xlsx);;");
+	filter.append(q_("CSV (Comma delimited)"));
+	filter.append(" (*.csv)");
+	QString defaultFilter("(*.xlsx)");
+	QString filePath = QFileDialog::getSaveFileName(Q_NULLPTR,
+							q_("Save calculated transits as..."),
+							QDir::homePath() + "/transits.xlsx",
+							filter,
+							&defaultFilter);
+
+	if (defaultFilter.contains(".csv", Qt::CaseInsensitive))
+		saveTableAsCSV(filePath, ui->solareclipseTreeWidget, ephemerisHeader);
+	else
+	{
+		int count = ui->transitTreeWidget->topLevelItemCount();
+		int columns = transitHeader.size();
+		int *width = new int[static_cast<unsigned int>(columns)];
+		QString sData;
+
+		QXlsx::Document xlsx;
+		xlsx.setDocumentProperty("title", q_("Transits across the Sun"));
+		xlsx.setDocumentProperty("creator", StelUtils::getApplicationName());
+		xlsx.addSheet("Transits across the Sun", AbstractSheet::ST_WorkSheet);
+
+		QXlsx::Format header;
+		header.setHorizontalAlignment(QXlsx::Format::AlignHCenter);
+		header.setPatternBackgroundColor(Qt::yellow);
+		header.setBorderStyle(QXlsx::Format::BorderThin);
+		header.setBorderColor(Qt::black);
+		header.setFontBold(true);
+		for (int i = 0; i < columns; i++)
+		{
+			// Row 1: Names of columns
+			sData = transitHeader.at(i).trimmed();
+			xlsx.write(1, i + 1, sData, header);
+			width[i] = sData.size();
+		}
+
+		QXlsx::Format data;
+		data.setHorizontalAlignment(QXlsx::Format::AlignRight);
+		for (int i = 0; i < count; i++)
+		{
+			for (int j = 0; j < columns; j++)
+			{
+				// Row 2 and next: the data
+				sData = ui->transitTreeWidget->topLevelItem(i)->text(j).trimmed();
+				xlsx.write(i + 2, j + 1, sData, data);
+				int w = sData.size();
+				if (w > width[j])
+				{
+					width[j] = w;
+				}
+			}
+		}
+
+		xlsx.write(count+3, 1, q_("Notes: Time in parentheses means the contact is invisible at current location. Transit times during thousands of years in the past and future are not reliable due to uncertainty in ΔT which is caused by fluctuations in Earth's rotation."));
 
 		for (int i = 0; i < columns; i++)
 		{
@@ -6212,7 +6936,8 @@ void AstroCalcDialog::changeEclipsesTab(int index)
 	const QMap<int, QString> headermap = {
 		{0,	q_("Table of solar eclipses")},
 		{1,	q_("Table of solar eclipses visible in current location")},
-		{2,	q_("Table of lunar eclipses")}
+		{2,	q_("Table of lunar eclipses")},
+		{3,	q_("Transits of Mercury and Venus across the Sun")}
 		};
 	ui->eclipseHeaderLabel->setText(headermap.value(index, q_("Table of solar eclipses")));
 }
@@ -6429,6 +7154,7 @@ void AstroCalcDialog::setWUTHeaderNames(const bool magnitude, const bool separat
 	}
 	// TRANSLATORS: IAU Constellation
 	wutHeader << qc_("Const.", "IAU Constellation");
+	wutHeader << q_("Type");
 	ui->wutMatchingObjectsTreeWidget->setHeaderLabels(wutHeader);
 
 	adjustWUTColumns();
@@ -6461,7 +7187,7 @@ void AstroCalcDialog::enableAngularLimits(bool enable)
 		ui->wutMatchingObjectsTreeWidget->hideColumn(WUTAngularSize); // special case!
 }
 
-void AstroCalcDialog::fillWUTTable(QString objectName, QString designation, float magnitude, Vec4d RTSTime, double maxElevation, double angularSize, QString constellation, bool decimalDegrees)
+void AstroCalcDialog::fillWUTTable(QString objectName, QString designation, float magnitude, Vec4d RTSTime, double maxElevation, double angularSize, QString constellation, QString otype, bool decimalDegrees)
 {
 	QString sAngularSize = dash;
 	QString sRise = dash;
@@ -6511,6 +7237,7 @@ void AstroCalcDialog::fillWUTTable(QString objectName, QString designation, floa
 	treeItem->setText(WUTConstellation, constellation);
 	treeItem->setTextAlignment(WUTConstellation, Qt::AlignCenter);
 	treeItem->setToolTip(WUTConstellation, q_("IAU Constellation"));
+	treeItem->setText(WUTObjectType, otype);
 }
 
 void AstroCalcDialog::calculateWutObjects()
@@ -6544,7 +7271,7 @@ void AstroCalcDialog::calculateWutObjects()
 		double alt;
 		float mag;
 		QSet<QString> objectsList;
-		QString designation, starName, constellation;
+		QString designation, starName, constellation, otype;
 
 		ui->wutAngularSizeLimitCheckBox->setText(q_("Limit angular size:"));
 		ui->wutAngularSizeLimitCheckBox->setToolTip(q_("Set limits for angular size for visible celestial objects"));
@@ -6552,7 +7279,7 @@ void AstroCalcDialog::calculateWutObjects()
 		ui->wutAngularSizeLimitMaxSpinBox->setToolTip(q_("Maximum angular size for visible celestial objects"));
 
 		// Direct calculate sunrise/sunset (civil twilight)
-		Vec4d rts = GETSTELMODULE(SolarSystem)->getSun()->getRTSTime(core, -7.);
+		Vec4d rts = GETSTELMODULE(SolarSystem)->getSun()->getRTSTime(core, -6.);
 		QList<double> wutJDList;
 		wutJDList.clear();
 
@@ -6615,8 +7342,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(object);
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -6745,13 +7473,14 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
 								if (d.isEmpty())
-									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else if (n.isEmpty())
-									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else
-									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 
 								objectsList.insert(designation);
 							}
@@ -6804,8 +7533,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 2.0*object->getAngularRadius(core), constellation, withDecimalDegree);
+								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 2.0*object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -6848,8 +7578,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(object);
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(starName, designation, mag, rts, alt, dblStar.value(object)/3600.0, constellation, withDecimalDegree);
+								fillWUTTable(starName, designation, mag, rts, alt, dblStar.value(object)/3600.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -6883,8 +7614,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(object);
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -6912,8 +7644,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(object);
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(starName, designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -6945,13 +7678,14 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
 								if (d.isEmpty())
-									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else if (n.isEmpty())
-									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else
-									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 
 								objectsList.insert(designation);
 							}
@@ -6974,8 +7708,9 @@ void AstroCalcDialog::calculateWutObjects()
 										rts = object->getRTSTime(core, altitudeLimitMin);
 										alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 										constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+										otype = object->getObjectTypeI18n();
 
-										fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+										fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 										objectsList.insert(designation);
 									}
 								}
@@ -7004,8 +7739,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(starName, designation, 99.f, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(starName, designation, 99.f, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -7027,8 +7763,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(object->getNameI18n().trimmed(), designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(object->getNameI18n().trimmed(), designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -7049,8 +7786,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -7071,8 +7809,9 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
-								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, withDecimalDegree);
+								fillWUTTable(object->getNameI18n(), designation, mag, rts, alt, 0.0, constellation, otype, withDecimalDegree);
 								objectsList.insert(designation);
 							}
 						}
@@ -7127,13 +7866,14 @@ void AstroCalcDialog::calculateWutObjects()
 								rts = object->getRTSTime(core, altitudeLimitMin);
 								alt = computeMaxElevation(qSharedPointerCast<StelObject>(object));
 								constellation = core->getIAUConstellation(object->getEquinoxEquatorialPos(core));
+								otype = object->getObjectTypeI18n();
 
 								if (d.isEmpty())
-									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(n, n, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else if (n.isEmpty())
-									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(d, d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 								else
-									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, withDecimalDegree);
+									fillWUTTable(QString("%1 (%2)").arg(d, n), d, mag, rts, alt, object->getAngularRadius(core), constellation, otype, withDecimalDegree);
 
 								objectsList.insert(designation);
 							}

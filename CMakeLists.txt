@@ -23,7 +23,7 @@ PROJECT(Stellarium)
 # Use integer versions instead of strings for easier handling if required
 SET(STELLARIUM_MAJOR 0)
 SET(STELLARIUM_MINOR 22)
-SET(STELLARIUM_PATCH 1)
+SET(STELLARIUM_PATCH 2)
 ADD_DEFINITIONS(
      -DSTELLARIUM_MAJOR=${STELLARIUM_MAJOR}
      -DSTELLARIUM_MINOR=${STELLARIUM_MINOR}
@@ -38,9 +38,9 @@ SET(STELLARIUM_URL "https://stellarium.org/")
 ADD_DEFINITIONS(-DSTELLARIUM_URL="${STELLARIUM_URL}")
 
 # The line below is copied from src/gui/HelpDialog.cpp file
-SET(STELLARIUM_COPYRIGHT "Copyright © ${COPYRIGHT_YEARS} ${PROJECT_NAME} Developers")
+SET(STELLARIUM_COPYRIGHT "Copyright (C) ${COPYRIGHT_YEARS} ${PROJECT_NAME} Developers")
 # The line below is copied from src/main.cpp file
-#SET(STELLARIUM_COPYRIGHT "Copyright © ${COPYRIGHT_YEARS} Fabien Chereau et al.")
+#SET(STELLARIUM_COPYRIGHT "Copyright (C) ${COPYRIGHT_YEARS} Fabien Chereau et al.")
 ADD_DEFINITIONS(-DSTELLARIUM_COPYRIGHT="${STELLARIUM_COPYRIGHT}")
 
 # Define URL for usage within program (feedback URL for plug-ins)
