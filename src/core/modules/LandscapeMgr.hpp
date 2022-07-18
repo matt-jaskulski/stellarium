@@ -350,6 +350,11 @@ public slots:
 	//! Return a pseudo HTML formatted string with all informations on the current landscape
 	QString getCurrentLandscapeHtmlDescription() const;
 
+	// Start sky luminance mod
+	//! Return a string with all information about light pollution
+	QString getCurrentLightPollutionDescription() const;
+	// End sky luminance mod
+
 	//! Return a pseudo HTML formatted string with information from description or ini file
 	QString getDescription() const;
 

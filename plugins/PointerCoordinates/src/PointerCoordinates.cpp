@@ -18,6 +18,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "LandscapeMgr.hpp"
 #include "StelProjector.hpp"
 #include "StelPainter.hpp"
 #include "StelApp.hpp"
@@ -82,6 +83,7 @@ PointerCoordinates::PointerCoordinates()
 	StelApp &app = StelApp::getInstance();
 	conf = app.getSettings();
 	gui = dynamic_cast<StelGui*>(app.getGui());
+
 }
 
 PointerCoordinates::~PointerCoordinates()
@@ -109,7 +111,9 @@ void PointerCoordinates::init()
 	setFlagShowCoordinatesButton(flagShowCoordinatesButton);
 	setFlagShowConstellation(flagShowConstellation);
 	setFlagShowCrossedLines(flagShowCrossedLines);
+
 }
+
 
 void PointerCoordinates::draw(StelCore *core)
 {
@@ -121,6 +125,10 @@ void PointerCoordinates::draw(StelCore *core)
 	sPainter.setColor(textColor, 1.f);
 	font.setPixelSize(getFontSize());
 	sPainter.setFont(font);
+
+	// Start sky luminance mod
+	lsMgr = GETSTELMODULE(LandscapeMgr);
+	// End sky luminance mod
 
 	Vec3d mousePosition = core->getMouseJ2000Pos();
 
@@ -288,6 +296,7 @@ void PointerCoordinates::draw(StelCore *core)
 
 	// Start sky luminance mod
 	QString lumiStr;
+	QString poluStr;
 	if (flagShowSkybright)
 	{
 		// Copied from LandscapeMgr.cpp
@@ -434,12 +443,14 @@ void PointerCoordinates::draw(StelCore *core)
 		//lumiStr = QString::number(lumi);
 		lumiStr = QString::number(lumi, 'e');
 
-	}
 
+		poluStr = lsMgr->getCurrentLightPollutionDescription();
+
+	}
 	// End sky luminance mod
 
 
-	QString coordsText = QString("%1: %2/%3%4, %5 lux").arg(coordsSystem, cxt, cyt, constel, lumiStr);
+	QString coordsText = QString("%1: %2/%3%4").arg(coordsSystem, cxt, cyt, constel);
 	x = getCoordinatesPlace(coordsText).first;
 	y = getCoordinatesPlace(coordsText).second;
 	if (getCurrentCoordinatesPlace()!=Custom)
@@ -448,6 +459,14 @@ void PointerCoordinates::draw(StelCore *core)
 		y *= ppx;
 	}
 	sPainter.drawText(x, y, coordsText);
+
+	// Start sky luminance mod
+	QFontMetrics fm(font);
+	QSize fs = fm.size(Qt::TextSingleLine, coordsText);
+	sPainter.drawText(x, y-fs.height(), QString("Luminance: %1 lux.").arg(lumiStr));
+	sPainter.drawText(x, y-2*fs.height(), poluStr);
+	// End sky luminance mod
+
 
 	if (flagShowCrossedLines)
 	{

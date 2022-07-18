@@ -1083,6 +1083,26 @@ QString LandscapeMgr::getCurrentLandscapeHtmlDescription() const
 	return desc;
 }
 
+// Start sky luminance mod
+QString LandscapeMgr::getCurrentLightPollutionDescription() const
+{
+	QString desc = "";
+
+	const auto lightPollutionLum = landscape->getDefaultLightPollutionLuminance();
+	//if (lightPollutionLum.isValid())
+	//{
+		const auto lum = lightPollutionLum.toFloat();
+		auto scaledLum = QString::number(lum, 'e');
+
+		desc = q_("Light pollution: %1 cd/m2 (NELM: %2; Bortle class: %3)")
+			.arg(scaledLum).arg(StelCore::luminanceToNELM(lum))
+			.arg(StelCore::luminanceToBortleScaleIndex(lum));
+	//}
+	return desc;
+
+}
+// End sky luminance mod
+
 //! Set flag for displaying cardinal points
 void LandscapeMgr::setFlagCardinalPoints(const bool displayed)
 {

@@ -30,6 +30,7 @@
 
 class QPixmap;
 class StelButton;
+class LandscapeMgr;
 class PointerCoordinatesWindow;
 
 /*! @defgroup pointerCoordinates Pointer Coordinates Plug-in
@@ -135,6 +136,12 @@ public:
 		return customPosition;
 	}
 
+
+	// Start sky luminance mod
+	Skybright skyb;
+	LandscapeMgr* lsMgr;
+	// End sky luminance mod
+
 signals:
 	void flagCoordinatesVisibilityChanged(bool b);
 
@@ -201,10 +208,6 @@ private:
 	PointerCoordinatesWindow* mainWindow;
 	QSettings* conf;
 	StelGui* gui;
-
-	// Start sky luminance mod
-	Skybright skyb;
-	// End sky luminance mod
 
 	// The current place for string with coordinates
 	CoordinatesPlace currentPlace;
