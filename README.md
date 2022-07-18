@@ -9,6 +9,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/stellarium/stellarium/badge)](https://www.codefactor.io/repository/github/stellarium/stellarium)
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/Stellarium/stellarium.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Stellarium/stellarium/alerts/)
 [![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/Stellarium/stellarium.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Stellarium/stellarium/context:cpp)
+[![Code Quality Score](https://api.codiga.io/project/33739/score/svg)](https://app.codiga.io/hub/project/33739/stellarium)
 [![DOI:10.1558/jsa.17822](http://img.shields.io/badge/DOI-10.1558/jsa.17822-blue.svg)](https://doi.org/10.1558/jsa.17822)
 
 Stellarium is a free open source planetarium for your computer. It shows a realistic sky
@@ -18,7 +19,7 @@ If you are new to Stellarium, go to [www.stellarium.org](https://www.stellarium.
 
 ## Installation Instructions & Quick Start
 
-Please refer to the [User Guide, Getting Started section](https://github.com/Stellarium/stellarium/releases/download/v0.22.1/stellarium_user_guide-0.22.1-1.pdf).
+Please refer to the [User Guide, Getting Started section](https://github.com/Stellarium/stellarium/releases/download/v0.22.2/stellarium_user_guide-0.22.2-1.pdf).
 
 ## Get & build the code
 
