@@ -30,7 +30,6 @@
 
 class QPixmap;
 class StelButton;
-class LandscapeMgr;
 class PointerCoordinatesWindow;
 
 /*! @defgroup pointerCoordinates Pointer Coordinates Plug-in
@@ -136,10 +135,8 @@ public:
 		return customPosition;
 	}
 
-
 	// Start sky luminance mod
 	Skybright skyb;
-	LandscapeMgr* lsMgr;
 	// End sky luminance mod
 
 signals:

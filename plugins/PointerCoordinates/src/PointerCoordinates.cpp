@@ -19,6 +19,7 @@
  */
 
 #include "LandscapeMgr.hpp"
+#include "StelMainScriptAPI.hpp"
 #include "StelProjector.hpp"
 #include "StelPainter.hpp"
 #include "StelApp.hpp"
@@ -125,10 +126,6 @@ void PointerCoordinates::draw(StelCore *core)
 	sPainter.setColor(textColor, 1.f);
 	font.setPixelSize(getFontSize());
 	sPainter.setFont(font);
-
-	// Start sky luminance mod
-	lsMgr = GETSTELMODULE(LandscapeMgr);
-	// End sky luminance mod
 
 	Vec3d mousePosition = core->getMouseJ2000Pos();
 
@@ -423,28 +420,18 @@ void PointerCoordinates::draw(StelCore *core)
 		// of the scaling itself
 
 		// Bortle scale is managed by SkyDrawer
-		StelApp *app = &StelApp::getInstance();
-		StelSkyDrawer* drawer = app->getCore()->getSkyDrawer();
-		Q_ASSERT(drawer);
-		float lightPollutionLuminance = drawer->getLightPollutionLuminance();
+		int bortleIndex = StelMainScriptAPI::getBortleScaleIndex();
 
-		// The code below was copied from AtmosphereMgr.cpp. I assume that it triggers and updates values upon location change.
-		// I am hoping that this is not necessary here as the pointer coordinates update automatically.
-
-		//connect(app->getCore(), SIGNAL(locationChanged(StelLocation)), this, SLOT(onLocationChanged(StelLocation)));
-		//connect(app->getCore(), SIGNAL(targetLocationChanged(StelLocation)), this, SLOT(onTargetLocationChanged(StelLocation)));
-		//connect(drawer, &StelSkyDrawer::lightPollutionLuminanceChanged, this, &LandscapeMgr::setAtmosphereLightPollutionLuminance);
-		//connect(app, SIGNAL(languageChanged()), this, SLOT(updateI18n()));
+		// Returns some representative value of zenith luminance in cd/m² for the given Bortle scale index.
+		auto lightPollutionLuminance = StelCore::bortleScaleIndexToLuminance(bortleIndex);
+		auto nelm = StelCore::luminanceToNELM(lightPollutionLuminance);
+		nelm = std::round(nelm*10)*0.1; // copied from LightPollutionWidget
 
 		// As far as I understand, fader is a 0..1 crossfade visual effect and it is safe to assume 1.0 when disabled and showing the sky.
 		//lumi += fader.getInterstate()*lightPollutionLuminance;
-		lumi += lightPollutionLuminance;
 
-		//lumiStr = QString::number(lumi);
 		lumiStr = QString::number(lumi, 'e');
-
-
-		poluStr = lsMgr->getCurrentLightPollutionDescription();
+		poluStr = QString("Pollution lum.: %1 cd/m2, Bortle class: %2, NELM: %3").arg(QString::number(lightPollutionLuminance, 'e')).arg(bortleIndex).arg(nelm);
 
 	}
 	// End sky luminance mod
